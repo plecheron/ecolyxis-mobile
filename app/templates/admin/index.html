@@ -1,0 +1,753 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — Ecolyxis{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block body %}
+<div class="admin-layout">
+  <!-- Sidebar -->
+  <nav class="admin-sidebar" id="adminSidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo">⚡</span>
+      <span class="sidebar-title">Admin</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="#section-llm" class="sidebar-link active" data-section="section-llm">
+        <span class="sidebar-icon">🧠</span> LLM Engine
+        <span class="live-dot live-on" id="sidebar-live-dot"></span>
+      </a></li>
+      <li><a href="#section-analytics" class="sidebar-link" data-section="section-analytics">
+        <span class="sidebar-icon">📊</span> Analytics
+      </a></li>
+      <li><a href="#section-system" class="sidebar-link" data-section="section-system">
+        <span class="sidebar-icon">🖥️</span> System
+      </a></li>
+      <li><a href="#section-services" class="sidebar-link" data-section="section-services">
+        <span class="sidebar-icon">🔧</span> Services
+      </a></li>
+      <li><a href="#section-ecolyxis" class="sidebar-link" data-section="section-ecolyxis">
+        <span class="sidebar-icon">🌿</span> Ecolyxis Stats
+      </a></li>
+      <li><a href="#section-top-users" class="sidebar-link" data-section="section-top-users">
+        <span class="sidebar-icon">👥</span> Top Users
+      <li><a href="/blog/admin" class="sidebar-link"><span class="sidebar-icon">📰</span> Blog Posts</a></li>
+      </a></li>
+      <li><a href="#section-errors" class="sidebar-link" data-section="section-errors">
+        <span class="sidebar-icon">⚠️</span> Errors
+      </a></li>
+      <li><a href="#section-signups" class="sidebar-link" data-section="section-signups">
+        <span class="sidebar-icon">🆕</span> Recent Signups
+      </a></li>
+      <li><a href="#section-messages" class="sidebar-link" data-section="section-messages">
+        <span class="sidebar-icon">💬</span> Recent Messages
+      </a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <a href="{{ url_for('dashboard.index') }}" class="sidebar-back">← Back to Ecolyxis</a>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="admin-main">
+    <div class="admin-topbar">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
+      <h1 class="admin-page-title">Admin Dashboard</h1>
+      <div class="topbar-right">
+        <label class="auto-refresh-toggle">
+          <input type="checkbox" id="autoRefreshCheck" checked>
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">Auto-refresh</span>
+        </label>
+        <button onclick="refreshAll()" class="admin-refresh" id="refreshBtn">↻ Refresh All</button>
+      </div>
+    </div>
+
+    <!-- LLM Engine -->
+    <section class="admin-section" id="section-llm">
+      <h2>LLM Engine <span class="live-dot live-on" id="llm-live-dot"></span></h2>
+      <div class="admin-grid admin-grid-6">
+        <div class="stat-card highlight">
+          <div class="stat-label">Generation Speed</div>
+          <div class="stat-value" id="llm-gen-tps">—</div>
+          <div class="stat-sub">tokens/sec</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Prompt Speed</div>
+          <div class="stat-value" id="llm-prompt-tps">—</div>
+          <div class="stat-sub">tokens/sec</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Processing</div>
+          <div class="stat-value" id="llm-processing">—</div>
+          <div class="stat-sub">active requests</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Queued</div>
+          <div class="stat-value" id="llm-queued">—</div>
+          <div class="stat-sub">deferred requests</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Generated</div>
+          <div class="stat-value" id="llm-total-gen">—</div>
+          <div class="stat-sub" id="llm-total-prompt-sub">prompted: —</div>
+        </div>
+        <div class="stat-card" id="errors-card">
+          <div class="stat-label">Errors (1h / 24h)</div>
+          <div class="stat-value" id="error-count">{{ errors.last_hour }} / {{ errors.last_24h }}</div>
+          <div class="stat-sub" id="error-sub">{% if errors.last_hour > 0 %}⚠ check log below{% else %}all clear{% endif %}</div>
+        </div>
+      </div>
+      {% if llm_errors.last_hour > 0 or llm_errors.last_24h > 0 %}
+      <div class="stat-card error-highlight" style="margin-top:12px;border-left:4px solid #e74c3c">
+        <div class="stat-label">⚠️ LLM Backend Errors (1h / 24h)</div>
+        <div class="stat-value">{{ llm_errors.last_hour }} / {{ llm_errors.last_24h }}</div>
+        {% if llm_errors.last_error %}
+        <div class="stat-sub" style="color:#e74c3c;max-width:600px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ llm_errors.last_error }}">Last: {{ llm_errors.last_error }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="admin-meta" id="llm-status-line">Connecting to LLM backend…</div>
+
+      <!-- Live Gen Speed Chart -->
+      <div class="chart-card" style="margin-top:16px">
+        <div class="chart-card-header">
+          <h3>Generation Speed (Live)</h3>
+          <div class="chart-tabs">
+            <button class="chart-tab active" onclick="setLiveRange('1', this)">1 min</button>
+            <button class="chart-tab" onclick="setLiveRange('60', this)">60 min</button>
+            <button class="chart-tab" onclick="setLiveRange('1440', this)">24h</button>
+          </div>
+        </div>
+        <canvas id="liveSpeedChart" height="180"></canvas>
+      </div>
+    </section>
+
+    <!-- Analytics Charts -->
+    <section class="admin-section" id="section-analytics">
+      <h2>Analytics — Last 30 Days</h2>
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3>Token Usage</h3>
+          <canvas id="tokenChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Messages per Day</h3>
+          <canvas id="messageChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3>User Signups</h3>
+          <canvas id="signupChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Active Users (Daily)</h3>
+          <canvas id="activeChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- System Stats -->
+    <section class="admin-section" id="section-system">
+      <h2>System</h2>
+      <div class="admin-grid admin-grid-4">
+        <div class="stat-card">
+          <div class="stat-label">CPU</div>
+          <div class="stat-value" id="sys-cpu-model">{{ sys.get('cpu_model', '—') }}</div>
+          <div class="stat-sub" id="sys-cpu-sub">{{ sys.get('cpu_cores', '?') }} cores · {{ sys.load_avg|default('?') }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Memory</div>
+          <div class="stat-value" id="sys-mem-val">{{ sys.get('memory_used_mb', 0)|int }} / {{ sys.get('memory_total_mb', 0)|int }} MB</div>
+          <div class="stat-sub" id="sys-mem-pct">{{ sys.get('memory_pct', 0) }}% used</div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="sys-mem-bar" style="width:{{ sys.get('memory_pct', 0) }}%;background:{% if sys.get('memory_pct',0) > 85 %}#e74c3c{% elif sys.get('memory_pct',0) > 60 %}#f39c12{% else %}#27ae60{% endif %}"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Disk (/)</div>
+          <div class="stat-value" id="sys-disk-val">{{ sys.get('disk_used_gb', 0) }} / {{ sys.get('disk_total_gb', 0) }} GB</div>
+          <div class="stat-sub" id="sys-disk-pct">{{ sys.get('disk_pct', 0) }}% used</div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="sys-disk-bar" style="width:{{ sys.get('disk_pct', 0) }}%;background:{% if sys.get('disk_pct',0) > 85 %}#e74c3c{% elif sys.get('disk_pct',0) > 60 %}#f39c12{% else %}#27ae60{% endif %}"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Swap</div>
+          <div class="stat-value" id="sys-swap-val">{{ sys.get('swap_used_mb', 0)|int }} / {{ sys.get('swap_total_mb', 0)|int }} MB</div>
+          <div class="stat-sub" id="sys-swap-pct">{{ sys.get('swap_pct', 0) }}% used</div>
+        </div>
+      </div>
+      <div class="admin-meta" id="sys-uptime">Uptime: {{ sys.get('uptime', '—') }}</div>
+    </section>
+
+    <!-- Services -->
+    <section class="admin-section" id="section-services">
+      <h2>Services</h2>
+      <div class="admin-grid admin-grid-4">
+        {% for name, status in services.items() %}
+        <div class="stat-card service-card">
+          <div class="service-name">{{ name }}</div>
+          <div class="service-status status-{{ 'ok' if status == 'active' else 'warn' if status == 'inactive' else 'err' }}">
+            <span class="status-dot"></span> {{ status }}
+          </div>
+        </div>
+        {% endfor %}
+        <div class="stat-card service-card">
+          <div class="service-name">LLM Backend</div>
+          <div class="service-status status-{{ 'ok' if llm.status == 'online' else 'err' }}">
+            <span class="status-dot"></span> {{ llm.status }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ecolyxis Stats -->
+    <section class="admin-section" id="section-ecolyxis">
+      <h2>Ecolyxis</h2>
+      <div class="admin-grid admin-grid-5">
+        <div class="stat-card highlight">
+          <div class="stat-label">Users</div>
+          <div class="stat-value" id="app-users">{{ app.total_users }}</div>
+          <div class="stat-sub" id="app-users-sub">{{ app.free_users }} free · {{ app.premium_users }} premium</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Threads</div>
+          <div class="stat-value" id="app-threads">{{ app.total_threads }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Messages</div>
+          <div class="stat-value" id="app-messages">{{ app.total_messages }}</div>
+          <div class="stat-sub" id="app-avg-msgs">~{{ app.avg_messages_per_user }}/user avg</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Tokens</div>
+          <div class="stat-value" id="app-tokens">{{ '{:,}'.format(app.total_tokens) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active (7d)</div>
+          <div class="stat-value" id="app-active">{{ app.active_users_week }}</div>
+        </div>
+      </div>
+      <div class="admin-grid admin-grid-3" style="margin-top:12px">
+        <div class="stat-card">
+          <div class="stat-label">New Users Today</div>
+          <div class="stat-value" id="app-today-users">{{ app.users_today }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Messages Today</div>
+          <div class="stat-value" id="app-today-msgs">{{ app.messages_today }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Tokens Today</div>
+          <div class="stat-value" id="app-today-tokens">{{ '{:,}'.format(app.tokens_today) }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Top Users -->
+    <section class="admin-section" id="section-top-users">
+      <h2>Top Users by Token Usage</h2>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>#</th><th>User</th><th>Email</th><th>Tier</th><th>Tokens</th><th>Messages</th><th>Last Active</th></tr></thead>
+          <tbody>
+          {% for u in top_users %}
+          <tr>
+            <td class="mono">{{ loop.index }}</td>
+            <td><strong>{{ u.username }}</strong></td>
+            <td>{{ u.email }}</td>
+            <td><span class="tier-badge tier-{{ u.tier }}">{{ u.tier }}</span></td>
+            <td class="mono">{{ '{:,}'.format(u.total_tokens) }}</td>
+            <td class="mono">{{ '{:,}'.format(u.total_messages) }}</td>
+            <td class="mono">{{ u.last_active[:16] if u.last_active else '—' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Error Log -->
+    <section class="admin-section" id="section-errors">
+      <h2>Recent Errors</h2>
+      <div id="errors-container">
+      {% if errors.recent %}
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Time</th><th>Route</th><th>Error</th></tr></thead>
+          <tbody>
+          {% for err in errors.recent %}
+          <tr>
+            <td class="mono">{{ err.time or '—' }}</td>
+            <td>{{ err.route or '—' }}</td>
+            <td class="msg-preview">{{ err.error or '—' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="stat-card">
+        <div class="stat-value" style="color:#27ae60">✓ No errors in the last 24 hours</div>
+      </div>
+      {% endif %}
+      </div>
+    </section>
+
+    <!-- Recent Signups -->
+    <section class="admin-section" id="section-signups">
+      <h2>Recent Signups</h2>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>User</th><th>Email</th><th>Tier</th><th>Joined</th></tr></thead>
+          <tbody>
+          {% for u in app.recent_users %}
+          <tr>
+            <td><strong>{{ u.username }}</strong></td>
+            <td>{{ u.email }}</td>
+            <td><span class="tier-badge tier-{{ u.tier }}">{{ u.tier }}</span></td>
+            <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Recent Messages -->
+    <section class="admin-section" id="section-messages">
+      <h2>Recent Messages</h2>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Content</th><th>Tokens</th></tr></thead>
+          <tbody>
+          {% for msg in app.recent_messages %}
+          <tr>
+            <td class="mono">{{ msg.created_at.strftime('%H:%M:%S') if msg.created_at else '—' }}</td>
+            <td>{{ msg.username }}</td>
+            <td><span class="role-{{ msg.role }}">{{ msg.role }}</span></td>
+            <td class="msg-preview">{{ msg.content[:120] }}{% if msg.content|length > 120 %}…{% endif %}</td>
+            <td>{{ msg.tokens_used or '—' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="admin-footer">
+      Last loaded: {{ now.strftime('%Y-%m-%d %H:%M:%S UTC') }}
+      &nbsp;·&nbsp; <a href="{{ url_for('dashboard.index') }}">← Back to Ecolyxis</a>
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Chart.js Data from Server ────────────────────────────────────
+const TOKEN_CHART_DATA = {{ token_chart | tojson }};
+const USER_CHART_DATA = {{ user_chart | tojson }};
+
+// ── Colors ───────────────────────────────────────────────────────
+const COLORS = {
+  green: '#27ae60',
+  greenFill: 'rgba(39,174,96,0.15)',
+  blue: '#3498db',
+  blueFill: 'rgba(52,152,219,0.15)',
+  orange: '#f39c12',
+  orangeFill: 'rgba(243,156,18,0.15)',
+  purple: '#9b59b6',
+  purpleFill: 'rgba(155,89,182,0.15)',
+};
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1a1a2e',
+      titleColor: '#fff',
+      bodyColor: '#ccc',
+      cornerRadius: 8,
+      padding: 10,
+    },
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      ticks: { color: '#888', maxRotation: 45, maxTicksLimit: 15, font: { size: 10 } },
+    },
+    y: {
+      grid: { color: 'rgba(255,255,255,0.05)' },
+      ticks: { color: '#888', font: { size: 10 } },
+      beginAtZero: true,
+    },
+  },
+};
+
+// ── Create Charts ────────────────────────────────────────────────
+function createCharts() {
+  const tokenLabels = TOKEN_CHART_DATA.map(d => d.date.slice(5)); // MM-DD
+  const msgLabels = TOKEN_CHART_DATA.map(d => d.date.slice(5));
+
+  // Token Usage
+  new Chart(document.getElementById('tokenChart'), {
+    type: 'line',
+    data: {
+      labels: tokenLabels,
+      datasets: [{
+        label: 'Tokens',
+        data: TOKEN_CHART_DATA.map(d => d.tokens),
+        borderColor: COLORS.green,
+        backgroundColor: COLORS.greenFill,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }],
+    },
+    options: { ...chartDefaults },
+  });
+
+  // Messages
+  new Chart(document.getElementById('messageChart'), {
+    type: 'bar',
+    data: {
+      labels: msgLabels,
+      datasets: [{
+        label: 'Messages',
+        data: TOKEN_CHART_DATA.map(d => d.messages),
+        backgroundColor: COLORS.blueFill,
+        borderColor: COLORS.blue,
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: { ...chartDefaults },
+  });
+
+  // Signups
+  const userLabels = USER_CHART_DATA.map(d => d.date.slice(5));
+  new Chart(document.getElementById('signupChart'), {
+    type: 'bar',
+    data: {
+      labels: userLabels,
+      datasets: [{
+        label: 'Signups',
+        data: USER_CHART_DATA.map(d => d.signups),
+        backgroundColor: COLORS.orangeFill,
+        borderColor: COLORS.orange,
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: { ...chartDefaults },
+  });
+
+  // Active Users
+  new Chart(document.getElementById('activeChart'), {
+    type: 'line',
+    data: {
+      labels: userLabels,
+      datasets: [{
+        label: 'Active Users',
+        data: USER_CHART_DATA.map(d => d.active),
+        borderColor: COLORS.purple,
+        backgroundColor: COLORS.purpleFill,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }],
+    },
+    options: { ...chartDefaults },
+  });
+}
+
+createCharts();
+
+// ── Live Gen Speed Chart ────────────────────────────────────────────
+let liveRange = '1';
+let liveChart = null;
+
+function initLiveChart() {
+  const ctx = document.getElementById('liveSpeedChart').getContext('2d');
+  liveChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'Gen tok/s',
+          data: [],
+          borderColor: '#27ae60',
+          backgroundColor: 'rgba(39,174,96,0.12)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: 'Prompt tok/s',
+          data: [],
+          borderColor: '#3498db',
+          backgroundColor: 'rgba(52,152,219,0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#888', font: { size: 10 }, boxWidth: 12, padding: 12 },
+        },
+        tooltip: {
+          backgroundColor: '#1a1a2e',
+          cornerRadius: 8,
+          padding: 8,
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#666', maxTicksLimit: 10, font: { size: 9 } },
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#888', font: { size: 9 } },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+}
+
+function formatTime(ts) {
+  const d = new Date(ts * 1000);
+  if (liveRange === '1') return d.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' });
+  if (liveRange === '60') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function fetchLiveHistory() {
+  try {
+    const r = await fetch('/admin/api/llm-history?minutes=' + liveRange);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!liveChart) initLiveChart();
+    const pts = d.points;
+    liveChart.data.labels = pts.map(p => formatTime(p.t));
+    liveChart.data.datasets[0].data = pts.map(p => p.gen);
+    liveChart.data.datasets[1].data = pts.map(p => p.prompt);
+    liveChart.update('none'); // skip animation for perf
+  } catch (e) {}
+}
+
+function setLiveRange(range, btn) {
+  liveRange = range;
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  fetchLiveHistory();
+}
+
+initLiveChart();
+fetchLiveHistory();
+setInterval(fetchLiveHistory, 5000);
+
+// ── Live Polling ─────────────────────────────────────────────────
+const LLM_POLL_MS = 2000;
+const STATS_POLL_MS = 15000;
+
+function fmt(n) {
+  if (n === undefined || n === null) return '—';
+  return n.toLocaleString();
+}
+
+function barColor(pct) {
+  return pct > 85 ? '#e74c3c' : pct > 60 ? '#f39c12' : '#27ae60';
+}
+
+async function pollLLM() {
+  try {
+    const r = await fetch('/admin/api/llm-metrics');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+
+    const dot = document.getElementById('llm-live-dot');
+    const sidebarDot = document.getElementById('sidebar-live-dot');
+    const statusLine = document.getElementById('llm-status-line');
+
+    if (d.status === 'online') {
+      dot.className = 'live-dot live-on';
+      if (sidebarDot) sidebarDot.className = 'live-dot live-on';
+      document.getElementById('llm-gen-tps').textContent = fmt(d.gen_tokens_per_sec);
+      document.getElementById('llm-prompt-tps').textContent = fmt(d.prompt_tokens_per_sec);
+
+      const proc = d.requests_processing;
+      const procEl = document.getElementById('llm-processing');
+      procEl.textContent = proc;
+      procEl.style.color = proc > 0 ? '#27ae60' : '';
+
+      const queue = d.requests_deferred;
+      const queueEl = document.getElementById('llm-queued');
+      queueEl.textContent = queue;
+      queueEl.style.color = queue > 0 ? '#e74c3c' : '';
+
+      document.getElementById('llm-total-gen').textContent = fmt(d.tokens_predicted_total);
+      document.getElementById('llm-total-prompt-sub').textContent = 'prompted: ' + fmt(d.prompt_tokens_total);
+
+      statusLine.textContent =
+        'Backend online · ' + d.gen_tokens_per_sec + ' tok/s gen · ' +
+        d.prompt_tokens_per_sec + ' tok/s prompt · ' +
+        d.requests_processing + ' active · ' + d.requests_deferred + ' queued';
+    } else {
+      dot.className = 'live-dot live-off';
+      if (sidebarDot) sidebarDot.className = 'live-dot live-off';
+      ['llm-gen-tps','llm-prompt-tps','llm-processing','llm-queued','llm-total-gen'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
+      statusLine.textContent = 'Backend offline' + (d.error ? ': ' + d.error : '');
+    }
+  } catch (e) {
+    document.getElementById('llm-live-dot').className = 'live-dot live-off';
+    document.getElementById('sidebar-live-dot').className = 'live-dot live-off';
+    document.getElementById('llm-status-line').textContent = 'Failed to reach admin API';
+  }
+}
+
+async function pollErrors() {
+  try {
+    const r = await fetch('/admin/api/errors');
+    if (!r.ok) return;
+    const d = await r.json();
+    const card = document.getElementById('errors-card');
+    const countEl = document.getElementById('error-count');
+    const subEl = document.getElementById('error-sub');
+    countEl.textContent = d.last_hour + ' / ' + d.last_24h;
+    if (d.last_hour > 0) {
+      card.classList.add('error-highlight');
+      subEl.textContent = '⚠ check log below';
+    } else {
+      card.classList.remove('error-highlight');
+      subEl.textContent = 'all clear';
+    }
+  } catch (e) {}
+}
+
+async function pollStats() {
+  if (!document.getElementById('autoRefreshCheck').checked) return;
+  try {
+    const r = await fetch('/admin/api/stats');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // System
+    const sys = d.system;
+    if (sys.memory_pct !== undefined) {
+      document.getElementById('sys-mem-val').textContent = sys.memory_used_mb + ' / ' + sys.memory_total_mb + ' MB';
+      document.getElementById('sys-mem-pct').textContent = sys.memory_pct + '% used';
+      const memBar = document.getElementById('sys-mem-bar');
+      memBar.style.width = sys.memory_pct + '%';
+      memBar.style.background = barColor(sys.memory_pct);
+    }
+    if (sys.disk_pct !== undefined) {
+      document.getElementById('sys-disk-val').textContent = sys.disk_used_gb + ' / ' + sys.disk_total_gb + ' GB';
+      document.getElementById('sys-disk-pct').textContent = sys.disk_pct + '% used';
+      const diskBar = document.getElementById('sys-disk-bar');
+      diskBar.style.width = sys.disk_pct + '%';
+      diskBar.style.background = barColor(sys.disk_pct);
+    }
+    if (sys.swap_used_mb !== undefined) {
+      document.getElementById('sys-swap-val').textContent = sys.swap_used_mb + ' / ' + sys.swap_total_mb + ' MB';
+      document.getElementById('sys-swap-pct').textContent = sys.swap_pct + '% used';
+    }
+    if (sys.uptime) {
+      document.getElementById('sys-uptime').textContent = 'Uptime: ' + sys.uptime;
+    }
+    if (sys.load_avg) {
+      document.getElementById('sys-cpu-sub').textContent = sys.cpu_cores + ' cores · [' + sys.load_avg.map(v => v.toFixed(2)).join(', ') + ']';
+    }
+
+    // App
+    const app = d.app;
+    document.getElementById('app-users').textContent = fmt(app.total_users);
+    document.getElementById('app-users-sub').textContent = app.free_users + ' free · ' + app.premium_users + ' premium';
+    document.getElementById('app-threads').textContent = fmt(app.total_threads);
+    document.getElementById('app-messages').textContent = fmt(app.total_messages);
+    document.getElementById('app-avg-msgs').textContent = '~' + app.avg_messages_per_user + '/user avg';
+    document.getElementById('app-tokens').textContent = fmt(app.total_tokens);
+    document.getElementById('app-active').textContent = app.active_users_week;
+    document.getElementById('app-today-users').textContent = app.users_today;
+    document.getElementById('app-today-msgs').textContent = app.messages_today;
+    document.getElementById('app-today-tokens').textContent = fmt(app.tokens_today);
+  } catch (e) {}
+}
+
+// Start polling
+pollLLM();
+pollErrors();
+pollStats();
+setInterval(pollLLM, LLM_POLL_MS);
+setInterval(pollErrors, 30000);
+setInterval(pollStats, STATS_POLL_MS);
+
+// ── Sidebar Navigation ───────────────────────────────────────────
+const sidebarLinks = document.querySelectorAll('.sidebar-link');
+const sections = document.querySelectorAll('.admin-section');
+
+// Highlight active section on scroll
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      sidebarLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`.sidebar-link[data-section="${entry.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+sections.forEach(s => observer.observe(s));
+
+// Smooth scroll on click
+sidebarLinks.forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.getElementById(link.dataset.section);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // Close sidebar on mobile
+    if (window.innerWidth <= 768) {
+      document.getElementById('adminSidebar').classList.remove('open');
+    }
+  });
+});
+
+// ── Sidebar Toggle (mobile) ──────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('adminSidebar').classList.toggle('open');
+}
+
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', (e) => {
+  const sidebar = document.getElementById('adminSidebar');
+  const toggle = document.getElementById('sidebarToggle');
+  if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !toggle.contains(e.target)) {
+    sidebar.classList.remove('open');
+  }
+});
+
+// ── Manual refresh ───────────────────────────────────────────────
+function refreshAll() {
+  location.reload();
+}
+</script>
+{% endblock %}

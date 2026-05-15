@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing — Ecolyxis</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-card: #161b22;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --border: #30363d;
+            --primary: #2ea44f;
+            --primary-hover: #3fb950;
+            --accent: #58a6ff;
+            --danger: #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .landing-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-brand { font-size: 1.3rem; font-weight: 700; text-decoration: none; color: var(--text); }
+        .nav-links { display: flex; gap: 0.75rem; }
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1.25rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-outline:hover { border-color: var(--text-muted); }
+        .container { max-width: 960px; margin: 0 auto; padding: 3rem 2rem; }
+        .pricing-header { text-align: center; margin-bottom: 3rem; }
+        .pricing-header h1 { font-size: 2.5rem; margin-bottom: 0.75rem; }
+        .pricing-header h1 .highlight { color: var(--primary-hover); }
+        .pricing-header p { color: var(--text-muted); font-size: 1.1rem; }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+        .pricing-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .pricing-card.popular {
+            border-color: var(--primary);
+            box-shadow: 0 0 24px rgba(46, 164, 79, 0.15);
+        }
+        .popular-badge {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: #fff;
+            padding: 0.25rem 1rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .pricing-card h3 { font-size: 1.2rem; margin-bottom: 0.5rem; }
+        .pricing-card .price {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .pricing-card .price span { font-size: 1rem; font-weight: 400; color: var(--text-muted); }
+        .pricing-card .price-note { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+        .pricing-card ul { list-style: none; flex: 1; margin-bottom: 1.5rem; }
+        .pricing-card li { padding: 0.4rem 0; color: var(--text-muted); font-size: 0.9rem; }
+        .pricing-card li::before { content: '✅ '; }
+        .pricing-card li.disabled { opacity: 0.4; }
+        .pricing-card li.disabled::before { content: '❌ '; }
+        .btn-full { display: block; text-align: center; width: 100%; }
+        .faq { margin-top: 2rem; }
+        .faq h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+        .faq-item { border-bottom: 1px solid var(--border); padding: 1rem 0; }
+        .faq-item h4 { font-size: 1rem; margin-bottom: 0.4rem; }
+        .faq-item p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+        .landing-footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .landing-footer a { color: var(--text-muted); text-decoration: none; }
+        .landing-footer a:hover { color: var(--text); }
+        @media (max-width: 700px) {
+            .pricing-grid { grid-template-columns: 1fr; }
+            .pricing-header h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="landing-nav">
+        <a href="/" class="nav-brand">🌿 Ecolyxis</a>
+        <div class="nav-links">
+            <a href="/login" class="btn btn-outline">Log In</a>
+            <a href="/signup" class="btn btn-primary">Get Started</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="pricing-header">
+            <h1>Simple, transparent <span class="highlight">pricing</span></h1>
+            <p>Start free, upgrade when you're ready. No hidden fees.</p>
+        </div>
+
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <h3>🌱 Free</h3>
+                <div class="price">£0<span>/mo</span></div>
+                <div class="price-note">No credit card required</div>
+                <ul>
+                    <li>5 messages per hour</li>
+                    <li>All conversations saved</li>
+                    <li>Edit &amp; regenerate messages</li>
+                    <li>Multiple chat modes</li>
+                    <li class="disabled">Unlimited messaging</li>
+                    <li class="disabled">Conversation search</li>
+                    <li class="disabled">Priority access</li>
+                </ul>
+                <a href="/signup" class="btn btn-outline btn-full">Get Started Free</a>
+            </div>
+
+            <div class="pricing-card popular">
+                <div class="popular-badge">Most Popular</div>
+                <h3>✨ Premium</h3>
+                <div class="price">£4.99<span>/1st mo</span></div>
+                <div class="price-note">then £9.99/mo — cancel anytime</div>
+                <ul>
+                    <li>Unlimited messages</li>
+                    <li>All conversations saved</li>
+                    <li>Edit &amp; regenerate messages</li>
+                    <li>All chat modes</li>
+                    <li>Conversation search</li>
+                    <li>Priority access</li>
+                    <li>Vision &amp; image analysis</li>
+                </ul>
+                <a href="/billing" class="btn btn-primary btn-full">Upgrade to Premium</a>
+            </div>
+
+            <div class="pricing-card">
+                <h3>🔌 API</h3>
+                <div class="price">Pay<span>‑per‑token</span></div>
+                <div class="price-note">£2.78 per million tokens</div>
+                <ul>
+                    <li>OpenAI-compatible API</li>
+                    <li>API key management</li>
+                    <li>Usage tracking dashboard</li>
+                    <li>Top up credits anytime</li>
+                    <li>No monthly commitment</li>
+                    <li class="disabled">Web chat access</li>
+                    <li class="disabled">Vision API</li>
+                </ul>
+                <a href="/signup" class="btn btn-outline btn-full">Get API Access</a>
+            </div>
+        </div>
+
+        <div class="faq">
+            <h2>FAQ</h2>
+            <div class="faq-item">
+                <h4>What counts as a message?</h4>
+                <p>Each message you send and each AI response counts as one message. On the free tier, you can send up to 5 messages per hour. Premium has no limits.</p>
+            </div>
+            <div class="faq-item">
+                <h4>Can I cancel anytime?</h4>
+                <p>Yes — cancel your subscription at any time from the billing page. You'll keep Premium access until the end of your current billing period.</p>
+            </div>
+            <div class="faq-item">
+                <h4>What is the intro price?</h4>
+                <p>Your first month of Premium is £4.99, then £9.99/month after that. No commitment, cancel before the first renewal and you'll only pay £4.99.</p>
+            </div>
+            <div class="faq-item">
+                <h4>How does API billing work?</h4>
+                <p>Add credits to your wallet via Stripe. API calls are deducted per token at £2.78 per million tokens. Top up anytime from the dashboard.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="landing-footer">
+        <a href="/">Home</a> · <a href="/contact/">Contact</a> · <a href="/legal/privacy">Privacy</a> · <a href="/legal/terms">Terms</a>
+        <p style="margin-top:0.5rem;">🌿 Ecolyxis — Powered by sustainable computing</p>
+    </footer>
+</body>
+</html>

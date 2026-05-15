@@ -1,0 +1,94 @@
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
+from flask_migrate import Migrate
+from config import Config
+
+db = SQLAlchemy()
+migrate = Migrate()
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"
+login_manager.login_message = "Please log in to access your chats."
+
+
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+
+    db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+
+    from app.models import User
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.session.get(User, int(user_id))
+
+    from app.auth import auth_bp
+    from app.dashboard import dash_bp
+    from app.chat import chat_bp
+    from app.billing import billing_bp
+    from app.admin import admin_bp
+    from app.contact import contact_bp
+    from app.api import api_bp
+    from app.apikeys import apikeys_bp
+    from app.wallet import wallet_bp
+    from app.blog import blog_bp
+    from app.legal import legal_bp
+    from app.health import health_bp
+    from app.pricing import pricing_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(dash_bp)
+    app.register_blueprint(chat_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(contact_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(apikeys_bp)
+    app.register_blueprint(wallet_bp)
+    app.register_blueprint(blog_bp)
+    app.register_blueprint(legal_bp)
+    app.register_blueprint(health_bp)
+    app.register_blueprint(pricing_bp)
+
+    with app.app_context():
+        from app.post_model import Post  # ensure model is registered
+        import markdown as md_lib
+        app.jinja_env.filters["markdown"] = lambda text: md_lib.markdown(text, extensions=["fenced_code", "tables", "nl2br"])
+        app.jinja_env.filters["markdown"].__name__ = "markdown"
+
+        import json as _json
+        import markupsafe
+        def render_message(text):
+            """Render message content. For image messages, show text + image tags."""
+            if not text or not text.strip().startswith("["):
+                return markupsafe.Markup.escape(text) if text else ""
+            try:
+                parts = _json.loads(text.strip())
+                if not isinstance(parts, list):
+                    return markupsafe.Markup.escape(text)
+                has_image = any(p.get("type") == "image" for p in parts)
+                if not has_image:
+                    return markupsafe.Markup.escape(text)
+                html_parts = []
+                for p in parts:
+                    if p.get("type") == "text":
+                        html_parts.append(f"<p>{markupsafe.escape(p.get('text', ''))}</p>")
+                    elif p.get("type") == "image":
+                        fname = p.get("file", p.get("url", ""))
+                        name = p.get("name", fname)
+                        if fname and not fname.startswith("data:"):
+                            html_parts.append('<div class="message-images"><img src="/uploads/' + str(markupsafe.escape(fname)) + '" class="message-image" alt="' + str(markupsafe.escape(name)) + '" loading="lazy"></div>')
+                        elif p.get("url", "").startswith("data:"):
+                            html_parts.append('<div class="message-images"><img src="' + str(markupsafe.escape(p["url"][:50])) + '..." class="message-image" alt="image"></div>')
+                return markupsafe.Markup("".join(html_parts))
+            except (_json.JSONDecodeError, KeyError, TypeError):
+                return markupsafe.Markup.escape(text)
+        app.jinja_env.filters["render_message"] = render_message
+        db.create_all()
+        from app.queue import init_queue
+        init_queue()
+
+    return app

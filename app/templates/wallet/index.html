@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}API Credits — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            <a href="{{ url_for('dashboard.index') }}" class="thread-item">
+                <span class="thread-title">← Back to Dashboard</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <span class="user-name">👤 {{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <main class="main-content">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">🌿 API Credits</span>
+            <span style="width:40px"></span>
+        </div>
+        <div class="billing-page">
+            <div class="dashboard-header">
+                <h1>💳 API Credits</h1>
+                <a href="{{ url_for('apikeys.index') }}" class="btn btn-outline btn-sm">← API Keys</a>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="api-flash api-flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+            {% endwith %}
+
+            {% if request.args.get('topup') == 'success' %}
+            <div class="api-flash api-flash-success">✅ Top-up successful! Credits added to your balance.</div>
+            {% elif request.args.get('topup') == 'cancelled' %}
+            <div class="api-flash api-flash-error">Top-up cancelled.</div>
+            {% endif %}
+
+            <!-- Balance Card -->
+            <div class="plan-card plan-premium" style="text-align:center; padding:2rem; margin-bottom:2rem;">
+                <div style="font-size:0.9rem; opacity:0.8; margin-bottom:0.5rem;">Current Balance</div>
+                <div style="font-size:2.5rem; font-weight:700;">£{{ "%.2f"|format(wallet.balance) }}</div>
+                <div style="font-size:0.8rem; opacity:0.7; margin-top:0.5rem;">
+                    ≈ {{ "{:,.0f}".format(wallet.balance_pence / 0.02) }} tokens remaining
+                </div>
+                {% if monthly_usage > 0 %}
+                <div style="font-size:0.8rem; opacity:0.7; margin-top:0.25rem;">
+                    This month: £{{ "%.2f"|format(monthly_usage / 100) }} used
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Top-up Options -->
+            <div class="api-section">
+                <h3>💰 Top Up Credits</h3>
+                <p style="opacity:0.8; margin-bottom:1rem; font-size:0.9rem;">
+                    £2.78 per million tokens (prompt + completion). Credits never expire.
+                </p>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+                    {% for amt in [5, 10, 20, 50] %}
+                    <form method="POST" action="{{ url_for('wallet.topup') }}">
+                        <input type="hidden" name="amount" value="{{ amt }}">
+                        <button type="submit" class="btn btn-primary btn-full" style="padding:1rem;">
+                            <div style="font-size:1.4rem; font-weight:700;">£{{ amt }}</div>
+                            <div style="font-size:0.75rem; opacity:0.8;">{{ "{:,.0f}".format(amt / 0.20) }} mtok</div>
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+                <form method="POST" action="{{ url_for('wallet.topup') }}" style="display:flex; gap:0.5rem; align-items:center; max-width:300px;">
+                    <span>£</span>
+                    <input type="number" name="amount" min="5" max="100" step="1" placeholder="Custom" class="input-sm" style="flex:1;">
+                    <button type="submit" class="btn btn-primary btn-sm">Top Up</button>
+                </form>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="api-section">
+                <h3>📜 Transaction History</h3>
+                {% if transactions %}
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid var(--border); text-align:left;">
+                                <th style="padding:0.5rem;">Date</th>
+                                <th style="padding:0.5rem;">Description</th>
+                                <th style="padding:0.5rem; text-align:right;">Amount</th>
+                                <th style="padding:0.5rem; text-align:right;">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set running_balance = namespace(value=wallet.balance_pence) %}
+                            {# We need to show balance AFTER each transaction, so we iterate reversed and calculate forward #}
+                            {% set ns = namespace(bal=wallet.balance_pence) %}
+                            {% for txn in transactions %}
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <td style="padding:0.5rem; white-space:nowrap;">{{ txn.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                                <td style="padding:0.5rem;">{{ txn.description }}</td>
+                                <td style="padding:0.5rem; text-align:right; {% if txn.amount_pence < 0 %}color:#ef4444{% else %}color:#22c55e{% endif %}; font-weight:600;">
+                                    {% if txn.amount_pence >= 0 %}+{% endif %}£{{ "%.2f"|format(txn.amount_pence / 100) }}
+                                </td>
+                                <td style="padding:0.5rem; text-align:right;">
+                                    —
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <p>No transactions yet. Top up to get started!</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Pricing Info -->
+            <div class="api-section" style="opacity:0.8; font-size:0.85rem;">
+                <h3>📊 Pricing</h3>
+                <ul>
+                    <li><strong>£2.78 per million tokens</strong> (combined prompt + completion)</li>
+                    <li>No minimum spend • Credits never expire</li>
+                    <li>30 requests/min, 60 messages/min rate limits apply</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+</div>
+<script>
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
+}
+</script>
+{% endblock %}

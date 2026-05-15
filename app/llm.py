@@ -1,0 +1,191 @@
+import requests
+import logging
+import json
+logger = logging.getLogger('ecolyxis.llm')
+
+
+class LLMClient:
+    """LLM client that stores config at init time (avoids app context issues in generators)."""
+
+    def __init__(self, base_url, model, system_prompt, max_history=20):
+        self.base_url = base_url
+        self.model = model
+        self.system_prompt = system_prompt
+        self.max_history = max_history
+
+    def stream_chat(self, messages, mode="standard"):
+        """Stream chat completion. Yields content strings, then a final usage dict.
+        
+        mode: "standard" (64k, 4 parallel), "long" (200k, 1 parallel), "vision" (64k, mmproj),
+              "quick" (64k, 4 parallel, no thinking)
+        Sends X-Context-Mode header to trigger the proxy to switch to the right config.
+        Thinking tokens (reasoning_content) are counted but not yielded to callers.
+        """
+        url = f"{self.base_url}/chat/completions"
+        enable_thinking = mode != "quick"
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            "max_tokens": 2048,
+            "temperature": 0.7,
+            "chat_template_kwargs": {"enable_thinking": enable_thinking},
+        }
+        headers = {}
+        # quick uses standard backend config (same parallel/ctx)
+        proxy_mode = mode if mode not in ("quick", "precise") else "standard"
+        if proxy_mode != "standard":
+            headers["X-Context-Mode"] = proxy_mode
+        thinking_active = False
+        try:
+            resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
+            resp.raise_for_status()
+            for raw_line in resp.iter_lines():
+                if not raw_line:
+                    continue
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    # Check for usage info in final chunk
+                    usage = chunk.get("usage")
+                    if usage:
+                        yield {
+                            "prompt_tokens": usage.get("prompt_tokens", 0),
+                            "completion_tokens": usage.get("completion_tokens", 0),
+                        }
+                        continue
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    reasoning = delta.get("reasoning_content", "")
+                    content = delta.get("content") or ""
+                    # Track thinking state — yield markers but not thinking text
+                    if reasoning:
+                        if not thinking_active:
+                            thinking_active = True
+                            yield {"thinking_start": True}
+                    if content:
+                        if thinking_active:
+                            thinking_active = False
+                            yield {"thinking_end": True}
+                        yield content
+                except json.JSONDecodeError:
+                    continue
+        except requests.RequestException as e:
+            logger.error("LLM backend error: %s", e)
+            yield f"\n\n⚠️ Error contacting LLM: {e}"
+
+    def _parse_content(self, content_text, include_images=True):
+        """Parse message content. Returns either a string or an OpenAI content array.
+        
+        include_images: if True, images are converted to OpenAI vision format with data URLs.
+                        if False, images are replaced with [image: filename] placeholders.
+        """
+        if not content_text:
+            return content_text
+        
+        stripped = content_text.strip()
+        if not stripped.startswith('['):
+            return content_text
+        
+        try:
+            parts = json.loads(stripped)
+            if not isinstance(parts, list):
+                return content_text
+            
+            has_image = any(p.get("type") == "image" for p in parts)
+            if not has_image:
+                return content_text
+            
+            if not include_images:
+                # Replace images with placeholders, keep text
+                text_parts = []
+                for p in parts:
+                    if p.get("type") == "text":
+                        text_parts.append(p.get("text", ""))
+                    elif p.get("type") == "image":
+                        name = p.get("name", p.get("file", "image"))
+                        text_parts.append(f"[image: {name}]")
+                return " ".join(t for t in text_parts if t) or content_text
+            
+            # Include images — convert file references to data URLs for OpenAI API
+            import os, base64
+            openai_parts = []
+            for p in parts:
+                if p.get("type") == "text":
+                    openai_parts.append({"type": "text", "text": p["text"]})
+                elif p.get("type") == "image":
+                    data_url = self._resolve_image_url(p)
+                    if data_url:
+                        openai_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": data_url}
+                        })
+                    else:
+                        name = p.get("name", p.get("file", "image"))
+                        openai_parts.append({"type": "text", "text": f"[image: {name}]"})
+            
+            return openai_parts if openai_parts else content_text
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return content_text
+
+    def _resolve_image_url(self, image_part):
+        """Resolve an image part to a data URL. Handles both file references and legacy data URLs."""
+        # Legacy: already a data URL
+        url = image_part.get("url", "")
+        if url.startswith("data:"):
+            return url
+        
+        # New format: file reference
+        filename = image_part.get("file", "")
+        if not filename:
+            return None
+        
+        import os, base64
+        filepath = os.path.join("/opt/Ecolyxis/uploads", filename)
+        if not os.path.isfile(filepath):
+            logger.warning("Image file not found: %s", filepath)
+            return None
+        
+        ext = filename.rsplit('.', 1)[-1].lower()
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
+        
+        with open(filepath, 'rb') as f:
+            b64 = base64.b64encode(f.read()).decode('utf-8')
+        
+        return f"data:{mime};base64,{b64}"
+
+    def build_messages(self, thread, mode="standard"):
+        """Build messages from thread history (all DB messages).
+        
+        mode: determines whether images are included or replaced with placeholders.
+              Only "vision" mode includes images; all others strip them.
+        """
+        from app.models import Message
+
+        prompt = thread.system_prompt if thread.system_prompt else self.system_prompt
+        msgs = [{"role": "system", "content": prompt}]
+
+        history = (
+            Message.query.filter_by(thread_id=thread.id)
+            .order_by(Message.created_at)
+            .all()
+        )
+        recent = history[-self.max_history:] if len(history) > self.max_history else history
+
+        include_images = (mode == "vision")
+
+        for m in recent:
+            # Use message_type for fast-path skipping
+            if hasattr(m, 'message_type') and m.message_type == 'text':
+                msgs.append({"role": m.role, "content": m.content})
+            else:
+                parsed = self._parse_content(m.content, include_images=include_images)
+                msgs.append({"role": m.role, "content": parsed})
+
+        return msgs

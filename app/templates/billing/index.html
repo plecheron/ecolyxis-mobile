@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Billing — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            <a href="{{ url_for('dashboard.index') }}" class="thread-item">
+                <span class="thread-title">← Back to Dashboard</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <span class="user-name">👤 {{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <main class="main-content">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">🌿 Billing</span>
+            <span style="width:40px"></span>
+        </div>
+        <div class="billing-page">
+            <h1>Billing & Subscription</h1>
+
+            <div class="billing-current">
+                <div class="plan-card {{ 'plan-premium' if current_user.is_premium else 'plan-free' }}">
+                    <div class="plan-badge">{{ '⛔ Premium (Cancelling)' if current_user.is_premium and current_user.cancel_at_period_end else ('✨ Premium' if current_user.is_premium else '🌱 Free') }}</div>
+                    <div class="plan-status">
+                        {% if current_user.cancel_at_period_end %}
+                            <span class="status-canceling">Cancelling</span>
+                        {% elif current_user.is_premium %}
+                            <span class="status-active">Active</span>
+                        {% else %}
+                            <span class="status-inactive">Limited</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Credits Quick Link -->
+            <div class="api-section" style="margin-top:1.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:1rem; border:1px solid var(--border); border-radius:8px;">
+                    <div>
+                        <strong>💳 API Credits</strong>
+                        <p style="font-size:0.85rem; opacity:0.8; margin:0.25rem 0 0;">Pay-per-token API access — £2.78/mtok</p>
+                    </div>
+                    <a href="{{ url_for('wallet.index') }}" class="btn btn-primary btn-sm">Manage Credits →</a>
+                </div>
+            </div>
+
+            <div class="plan-comparison">
+                <div class="comparison-card {% if not current_user.is_premium %}current{% endif %}">
+                    <h3>🌱 Free</h3>
+                    <div class="plan-price">£0<span>/mo</span></div>
+                    <ul class="plan-features">
+                        <li>✅ 5 messages per hour</li>
+                        <li>✅ All conversations saved</li>
+                        <li>✅ Search & edit messages</li>
+                        <li>✅ API access (pay-per-token)</li>
+                        <li>❌ Unlimited messaging</li>
+                    </ul>
+                    {% if not current_user.is_premium %}
+                    <div class="plan-current-badge">Current Plan</div>
+                    {% endif %}
+                </div>
+
+                <div class="comparison-card {% if current_user.is_premium %}current{% endif %}">
+                    <div class="plan-popular">Most Popular</div>
+                    <h3>✨ Premium</h3>
+                    <div class="plan-price">£4.99<span>/1st mo</span></div>
+                    <div class="plan-price-after">then £9.99/mo</div>
+                    <ul class="plan-features">
+                        <li>✅ Unlimited messages</li>
+                        <li>✅ All conversations saved</li>
+                        <li>✅ Search & edit messages</li>
+                        <li>✅ Priority access</li>
+                        <li>✅ API access (pay-per-token)</li>
+                    </ul>
+                    {% if current_user.is_premium %}
+                    <div class="plan-current-badge">Current Plan</div>
+                    {% if current_user.cancel_at_period_end %}
+                    <div class="billing-cancel-notice">
+                        <p>⛔ Subscription cancelling at end of billing period.</p>
+                        <p class="billing-cancel-sub">You'll keep Premium access until then.</p>
+                    </div>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('billing.cancel_subscription') }}">
+                        <button type="submit" class="btn btn-outline btn-full" onclick="return confirm('Cancel your Premium subscription? You\'ll keep access until the end of your billing period.')">
+                            Cancel Subscription
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if current_user.subscription_status == 'past_due' %}
+                    <p class="billing-warning">⚠️ Payment issue — please update your payment method.</p>
+                    {% endif %}
+                    {% else %}
+                    <a href="{{ url_for('billing.checkout') }}" class="btn btn-primary btn-full">Upgrade to Premium</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="billing-footer">
+                <p>Questions? Reach out anytime. Powered by Stripe 🔒</p>
+            </div>
+        </div>
+    </main>
+</div>
+<script>
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
+}
+</script>
+{% endblock %}

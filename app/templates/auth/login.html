@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Log In — Ecolyxis{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-card">
+        <a href="/" class="auth-brand">🌿 Ecolyxis</a>
+        <h2>Welcome back</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="auth-flash auth-flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endwith %}
+
+        <form method="POST" id="login-form">
+            <div class="form-group">
+                <label for="login">Username or Email</label>
+                <input type="text" id="login" name="login" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full" id="login-btn">Log In</button>
+        </form>
+
+        <div class="auth-divider"><span>or</span></div>
+
+        <button type="button" class="btn btn-secondary btn-full" id="biometric-btn" onclick="biometricLogin()">
+            <span id="biometric-icon">👆</span> Sign in with Fingerprint
+        </button>
+
+        <p class="auth-switch">Don't have an account? <a href="{{ url_for('auth.signup') }}">Sign up</a></p>
+    </div>
+</div>
+<style>
+.auth-divider {
+    display: flex; align-items: center; margin: 16px 0; color: #888;
+}
+.auth-divider::before, .auth-divider::after {
+    content: ''; flex: 1; border-bottom: 1px solid #333;
+}
+.auth-divider span { padding: 0 12px; font-size: 13px; }
+.btn-secondary {
+    background: #2a2a3e; color: #e0e0e0; border: 1px solid #444;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer;
+}
+.btn-secondary:hover { background: #353550; }
+</style>
+<script>
+document.getElementById('login-form').addEventListener('submit', function() {
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Logging in...';
+});
+
+function bufferEncode(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function bufferDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+}
+
+async function biometricLogin() {
+    const btn = document.getElementById('biometric-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Waiting for biometric...';
+
+    try {
+        // Step 1: Get authentication options from server
+        const beginResp = await fetch('/webauthn/authenticate-begin', { method: 'POST' });
+        if (!beginResp.ok) {
+            const err = await beginResp.json();
+            throw new Error(err.error || 'Failed to start authentication');
+        }
+        const options = await beginResp.json();
+
+        // Decode challenge
+        options.challenge = bufferDecode(options.challenge);
+
+        // Decode allowCredentials if any
+        if (options.allowCredentials) {
+            options.allowCredentials = options.allowCredentials.map(c => ({
+                ...c,
+                id: bufferDecode(c.id),
+            }));
+        }
+
+        // Step 2: Prompt biometric
+        const assertion = await navigator.credentials.get({ publicKey: options });
+
+        // Step 3: Verify with server
+        const finishData = {
+            credential: {
+                id: assertion.id,
+                rawId: bufferEncode(assertion.rawId),
+                response: {
+                    authenticatorData: bufferEncode(assertion.response.authenticatorData),
+                    clientDataJSON: bufferEncode(assertion.response.clientDataJSON),
+                    signature: bufferEncode(assertion.response.signature),
+                    userHandle: assertion.response.userHandle ? bufferEncode(assertion.response.userHandle) : null,
+                },
+                type: assertion.type,
+            }
+        };
+
+        const finishResp = await fetch('/webauthn/authenticate-finish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finishData),
+        });
+
+        const result = await finishResp.json();
+        if (result.success) {
+            window.location.href = '/dashboard';
+        } else {
+            throw new Error(result.error || 'Authentication failed');
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<span id="biometric-icon">👆</span> Sign in with Fingerprint';
+        if (e.name !== 'NotAllowedError') {
+            alert('Biometric login failed: ' + e.message);
+        }
+    }
+}
+
+// Auto-detect WebAuthn support and hide button if not available
+if (!window.PublicKeyCredential) {
+    document.getElementById('biometric-btn').style.display = 'none';
+    document.querySelector('.auth-divider').style.display = 'none';
+}
+</script>
+{% endblock %}

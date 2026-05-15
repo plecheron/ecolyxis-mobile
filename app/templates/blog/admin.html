@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Manage Posts — Ecolyxis Admin{% endblock %}
+{% block body %}
+<div style="max-width:800px;margin:2rem auto;padding:0 1.5rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+        <h2 style="margin:0;">📰 Manage Posts</h2>
+        <button class="btn btn-primary" onclick="document.getElementById('new-post-form').style.display='block';this.style.display='none'">+ New Post</button>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div style="padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;background:{{ '#1a3a1a' if category == 'success' else '#3a1a1a' }};color:{{ '#4ade80' if category == 'success' else '#f87171' }};">
+        {{ message }}
+    </div>
+    {% endfor %}
+    {% endwith %}
+
+    <!-- New post form -->
+    <div id="new-post-form" style="display:none;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;margin-bottom:2rem;">
+        <h3>New Post</h3>
+        <form method="POST" action="{{ url_for('blog.admin') }}">
+            <div style="margin-bottom:1rem;">
+                <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Title</label>
+                <input type="text" name="title" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
+            </div>
+            <div style="margin-bottom:1rem;">
+                <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Slug <span style="color:var(--text-muted);">(auto-generated if blank)</span></label>
+                <input type="text" name="slug" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
+            </div>
+            <div style="margin-bottom:1rem;">
+                <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Summary</label>
+                <input type="text" name="summary" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;" placeholder="Brief description (auto-generated from body if blank)">
+            </div>
+            <div style="margin-bottom:1rem;">
+                <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Body <span style="color:var(--text-muted);">(Markdown supported)</span></label>
+                <textarea name="body" rows="12" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;font-family:monospace;"></textarea>
+            </div>
+            <div style="display:flex;gap:0.75rem;align-items:center;">
+                <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem;">
+                    <input type="checkbox" name="publish" checked> Publish immediately
+                </label>
+                <button type="submit" class="btn btn-primary">Create Post</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Post list -->
+    {% for post in posts %}
+    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:1rem;">
+        <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                <a href="{{ url_for('blog.edit', post_id=post.id) }}" style="font-weight:600;text-decoration:none;color:inherit;">{{ post.title }}</a>
+                {% if not post.published %}
+                <span style="font-size:0.7rem;background:#92400e;color:#fbbf24;padding:1px 6px;border-radius:4px;">DRAFT</span>
+                {% endif %}
+            </div>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.2rem;">/{{ post.slug }} · {{ post.created_at.strftime('%d %b %Y') }}</div>
+        </div>
+        <a href="{{ url_for('blog.view', slug=post.slug) }}" class="btn btn-outline btn-sm" style="font-size:0.75rem;">View</a>
+        <form method="POST" action="{{ url_for('blog.delete', post_id=post.id) }}" onsubmit="return confirm('Delete this post?')">
+            <button type="submit" class="btn btn-outline btn-sm" style="font-size:0.75rem;color:var(--danger);">🗑️</button>
+        </form>
+    </div>
+    {% endfor %}
+
+    {% if not posts %}
+    <p style="text-align:center;color:var(--text-muted);padding:2rem;">No posts yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

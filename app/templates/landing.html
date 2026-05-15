@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Ecolyxis — Sustainable AI{% endblock %}
+{% block body %}
+<div class="landing">
+    <nav class="landing-nav">
+        <div class="nav-brand">🌿 Ecolyxis</div>
+        <div class="nav-links">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-outline">Log In</a>
+            <a href="{{ url_for('auth.signup') }}" class="btn btn-primary">Get Started</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Sustainable AI.<br><span class="highlight">No Compromises.</span></h1>
+            <p>Powerful AI conversations with carbon-neutral computing. Next-gen efficiency meets environmental responsibility.</p>
+            <a href="{{ url_for('auth.signup') }}" class="btn btn-primary btn-lg">Get Started — It's Free</a>
+        </div>
+        <div class="hero-graphic">
+            <div class="eco-orb"></div>
+            <div class="eco-orb-icon">🌿</div>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="feature-card">
+            <div class="feature-icon">♻️</div>
+            <h3>Efficient Compute</h3>
+            <p>Optimized inference engines squeeze maximum performance from every watt. High performance computing with minimal environmental impact.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🌍</div>
+            <h3>Carbon Offset</h3>
+            <p>We offset the carbon emissions from every computation. Your AI conversations are carbon-neutral, backed by verified offset programmes.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🚀</div>
+            <h3>Modern Optimization</h3>
+            <p>Advanced inference techniques deliver fast, responsive AI while keeping energy use to an absolute minimum.</p>
+        </div>
+    </section>
+
+    <footer class="landing-footer">
+        <a href="/pricing">Pricing</a> · <a href="/contact/">Contact Us</a> · <a href="/blog/">Updates</a> · <a href="/legal/privacy">Privacy Policy</a> · <a href="/legal/terms">Terms of Service</a> ·
+        <p>🌿 Ecolyxis — Powered by sustainable computing</p>
+    </footer>
+</div>
+{% endblock %}

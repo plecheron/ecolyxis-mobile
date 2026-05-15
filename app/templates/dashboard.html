@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            {% for t in threads %}
+            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item">
+                <span class="thread-title">{{ t.title }}</span>
+                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
+            </a>
+            {% endfor %}
+            {% if not threads %}
+            <p class="sidebar-empty">No conversations yet</p>
+            {% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            {% if current_user.id == 1 %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
+            <span class="user-name">👤 {{ current_user.username }}</span>
+            <button onclick="showBiometricSettings()" class="btn btn-outline btn-sm" style="margin-bottom:4px">🔐 Security</button>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+    </aside>
+
+    <!-- Biometric Settings Modal -->
+    <div id="biometric-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeBiometricSettings()">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>🔐 Security Settings</h3>
+                <button onclick="closeBiometricSettings()" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <h4>Biometric Login</h4>
+                <p style="color:#aaa;font-size:13px;margin-bottom:12px">Register your fingerprint or face to log in without a password.</p>
+                <div id="webauthn-devices">Loading...</div>
+                <button id="register-biometric-btn" class="btn btn-primary btn-full" onclick="registerBiometric()" style="margin-top:12px">+ Add Device</button>
+            </div>
+        </div>
+    </div>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <main class="main-content">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">🌿 Ecolyxis</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+        <div class="dashboard-main">
+            <div class="dashboard-header">
+                <h2>Your Conversations
+                    <span class="tier-badge {{ 'tier-premium' if current_user.is_premium else 'tier-free' }}">
+                        {{ '✨ Premium' if current_user.is_premium else '🌱 Free' }}
+                    </span>
+                </h2>
+                <form class="search-bar" method="GET" action="{{ url_for('dashboard.index') }}">
+                    <input type="text" name="q" placeholder="Search messages..." value="{{ query|default('') }}" autocomplete="off">
+                    <button type="submit" class="btn btn-outline btn-sm">🔍</button>
+                    {% if query %}
+                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline btn-sm">Clear</a>
+                    {% endif %}
+                </form>
+            </div>
+
+            {% if query %}
+            <p class="search-hint">Showing threads matching "<strong>{{ query }}</strong>"</p>
+            {% endif %}
+
+            {% if current_user.is_premium %}
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ '{:,}'.format(stats.total_tokens) }}</div>
+                    <div class="stat-label">Total Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ '{:,}'.format(stats.today_tokens) }}</div>
+                    <div class="stat-label">Today's Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.total_messages }}</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">✨</div>
+                    <div class="stat-label">Premium Active</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.total_messages }}</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-card">
+                    <a href="{{ url_for('billing.index') }}" class="stat-link">
+                        <div class="stat-value">🌱</div>
+                        <div class="stat-label">Upgrade Plan</div>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if threads %}
+            <div class="thread-grid">
+                {% for t in threads %}
+                <div class="thread-card" id="thread-{{ t.id }}">
+                    <a href="{{ url_for('chat.view', thread_id=t.id) }}">
+                        <h3>{{ t.title }}</h3>
+                        <div class="thread-card-meta">
+                            <span>{{ msg_counts.get(t.id, 0) }} messages</span>
+                            <span>{{ t.updated_at.strftime('%d %B %Y, %H:%M') }}</span>
+                        </div>
+                        {% if t.id in last_snippets %}
+                        <div class="thread-card-snippet">{{ last_snippets[t.id] }}</div>
+                        {% endif %}
+                    </a>
+                    <button class="btn-delete"
+                            hx-delete="{{ url_for('dashboard.delete_thread', thread_id=t.id) }}"
+                            hx-target="#thread-{{ t.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete this conversation?">🗑️</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>🌱 {{ 'No threads match your search.' if query else 'Start your first conversation with sustainable AI' }}</p>
+                {% if not query %}
+                <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                    <button type="submit" class="btn btn-primary btn-lg">Start Chatting</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script>
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
+}
+</script>
+<style>
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); display: flex; align-items: center;
+    justify-content: center; z-index: 1000;
+}
+.modal-card {
+    background: #1e1e2e; border-radius: 12px; width: 90%; max-width: 420px;
+    padding: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.modal-header h3 { margin: 0; }
+.modal-close { background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer; }
+.modal-body h4 { margin: 0 0 8px; }
+.webauthn-device {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; background: #2a2a3e; border-radius: 8px; margin-bottom: 8px;
+}
+.webauthn-device-name { font-size: 14px; }
+.webauthn-device-date { font-size: 11px; color: #888; }
+.webauthn-device button { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 16px; }
+</style>
+<script>
+function showBiometricSettings() {
+    document.getElementById('biometric-modal').style.display = 'flex';
+    loadWebAuthnDevices();
+}
+function closeBiometricSettings() {
+    document.getElementById('biometric-modal').style.display = 'none';
+}
+async function loadWebAuthnDevices() {
+    const el = document.getElementById('webauthn-devices');
+    const btn = document.getElementById('register-biometric-btn');
+    if (!window.PublicKeyCredential) {
+        el.innerHTML = '<p style="color:#e74c3c">Biometric login is not supported on this device.</p>';
+        btn.style.display = 'none';
+        return;
+    }
+    try {
+        const r = await fetch('/webauthn/credentials');
+        const creds = await r.json();
+        if (creds.length === 0) {
+            el.innerHTML = '<p style="color:#888;font-size:13px">No devices registered yet.</p>';
+        } else {
+            el.innerHTML = creds.map(c => '<div class="webauthn-device">' +
+                '<div><div class="webauthn-device-name">' + escapeHtml(c.name) + '</div>' +
+                '<div class="webauthn-device-date">Added ' + new Date(c.created_at).toLocaleDateString() +
+                (c.last_used_at ? ' · Last used ' + new Date(c.last_used_at).toLocaleDateString() : '') + '</div></div>' +
+                '<button onclick="removeWebAuthnDevice(' + c.id + ')" title="Remove">🗑️</button></div>').join('');
+        }
+        btn.style.display = creds.length >= 5 ? 'none' : '';
+    } catch (e) {
+        el.innerHTML = '<p style="color:#e74c3c">Failed to load devices.</p>';
+    }
+}
+function escapeHtml(s) {
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+function bufferEncode(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = ''; bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function bufferDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+}
+async function registerBiometric() {
+    const btn = document.getElementById('register-biometric-btn');
+    btn.disabled = true; btn.textContent = 'Waiting for biometric...';
+    try {
+        const beginResp = await fetch('/webauthn/register-begin', { method: 'POST' });
+        if (!beginResp.ok) throw new Error((await beginResp.json()).error || 'Failed');
+        const options = await beginResp.json();
+        options.challenge = bufferDecode(options.challenge);
+        options.user.id = bufferDecode(options.user.id);
+        if (options.excludeCredentials) {
+            options.excludeCredentials = options.excludeCredentials.map(c => ({
+                ...c, id: bufferDecode(c.id)
+            }));
+        }
+        const credential = await navigator.credentials.create({ publicKey: options });
+        const deviceName = prompt('Name this device:', 'My ' + (navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad') ? 'iPhone' : navigator.userAgent.includes('Android') ? 'Android' : 'Device')) || 'My Device';
+        const finishData = {
+            credential: {
+                id: credential.id,
+                rawId: bufferEncode(credential.rawId),
+                response: {
+                    attestationObject: bufferEncode(credential.response.attestationObject),
+                    clientDataJSON: bufferEncode(credential.response.clientDataJSON),
+                },
+                type: credential.type,
+                transports: credential.response.getTransports ? credential.response.getTransports() : [],
+            },
+            name: deviceName,
+        };
+        const finishResp = await fetch('/webauthn/register-finish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finishData),
+        });
+        const result = await finishResp.json();
+        if (result.success) {
+            loadWebAuthnDevices();
+        } else {
+            alert('Registration failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch (e) {
+        if (e.name !== 'NotAllowedError') alert('Registration failed: ' + e.message);
+    } finally {
+        btn.disabled = false; btn.textContent = '+ Add Device';
+    }
+}
+async function removeWebAuthnDevice(id) {
+    if (!confirm('Remove this device?')) return;
+    await fetch('/webauthn/credentials/' + id, { method: 'DELETE' });
+    loadWebAuthnDevices();
+}
+</script>
+{% endblock %}

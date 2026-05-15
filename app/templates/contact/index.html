@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Contact Us — Ecolyxis{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/contact.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="contact-wrap">
+  <div class="contact-hero">
+    <h1>Get in Touch 🌿</h1>
+    <p>Have a question, feedback, or need help? We'd love to hear from you.</p>
+  </div>
+
+  <div class="contact-grid">
+    <div class="contact-card">
+      <div class="contact-icon">📞</div>
+      <h2>Call Us</h2>
+      <p class="contact-label">Phone</p>
+      <a href="tel:+442033930446" class="contact-value">+44 203 393 0446</a>
+      <p class="contact-hours">Mon–Fri, 9am–5pm GMT</p>
+    </div>
+
+    <div class="contact-card">
+      <div class="contact-icon">📧</div>
+      <h2>Email Us</h2>
+      <p class="contact-label">Email</p>
+      <a href="mailto:support@ecolyxis.co.uk" class="contact-value">support@ecolyxis.co.uk</a>
+      <p class="contact-hours">We'll respond within 24 hours</p>
+    </div>
+
+    <div class="contact-card contact-unavailable">
+      <div class="contact-icon">💬</div>
+      <h2>Live Chat</h2>
+      <p class="contact-label">In-App</p>
+      <p class="contact-value contact-muted">Coming soon</p>
+      <p class="contact-hours">Currently unavailable</p>
+    </div>
+  </div>
+
+  <div class="contact-faq">
+    <h2>Common Questions</h2>
+    <div class="faq-item">
+      <h3>How do I cancel my subscription?</h3>
+      <p>Go to <strong>Billing</strong> in your dashboard and click "Cancel Subscription". You'll keep premium access until the end of your billing period.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Is my data secure?</h3>
+      <p>Yes. All data is encrypted in transit and at rest. We never share your information with third parties.</p>
+    </div>
+    <div class="faq-item">
+      <h3>What's the free tier limit?</h3>
+      <p>Free users can send up to 5 messages per hour. Premium users have unlimited access.</p>
+    </div>
+  </div>
+
+  <div class="contact-footer">
+    <a href="{{ url_for('dashboard.index') }}">← Back to Ecolyxis</a>
+  </div>
+</div>
+{% endblock %}

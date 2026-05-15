@@ -1,0 +1,1374 @@
+{% extends "base.html" %}
+{% block title %}{{ thread.title }} — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('dashboard.index') }}" class="sidebar-brand">🌿 Ecolyxis</a>
+            {% if rate_info.is_premium %}<span class="tier-badge tier-premium tier-badge-sm" style="margin-left:6px">✨ Premium</span>{% endif %}
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        {% if current_user.is_premium %}
+        <div class="sidebar-search">
+            <input type="text" id="sidebar-search" placeholder="Search conversations..." autocomplete="off">
+            <div id="sidebar-search-results" class="sidebar-search-results"></div>
+        </div>
+        {% else %}
+        <div class="sidebar-search sidebar-search-locked">
+            <div class="search-locked" onclick="window.location.href='/billing'">
+                <span>🔒</span> Search — <strong>Premium</strong>
+            </div>
+        </div>
+        {% endif %}
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            {% for t in threads %}
+            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item {{ 'active' if t.id == thread.id }}">
+                <span class="thread-title">{{ t.title }}</span>
+                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+        <div class="sidebar-footer">
+            <span class="user-name">👤 {{ current_user.username }}</span>
+            <a href="/contact/" class="btn btn-outline btn-sm">Contact</a>
+            <a href="{{ url_for("auth.logout") }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <main class="main-content chat-main">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">{{ thread.title }}</span>
+            <span style="width:40px"></span>
+        </div>
+        <div class="chat-header">
+            <div class="context-wheel" id="context-wheel" title="Context usage" onclick="toggleCtxMenu(event)">
+                <svg class="context-ring" viewBox="0 0 36 36">
+                    <circle class="context-ring-bg" cx="18" cy="18" r="15.5"/>
+                    <circle class="context-ring-fill" id="context-ring-fill" cx="18" cy="18" r="15.5"/>
+                </svg>
+                <span class="context-pct" id="context-pct">0%</span>
+                <div class="ctx-menu" id="ctx-menu">
+                    <div class="ctx-menu-title">Manage Context</div>
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); progressiveCompact()">
+                        <span class="ctx-icon">📝</span>
+                        <div><span class="ctx-label">Progressive Compact</span><span class="ctx-desc">Summarise oldest messages, keep recent</span></div>
+                    </div>
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); compactConversation()">
+                        <span class="ctx-icon">📦</span>
+                        <div><span class="ctx-label">Full Compact</span><span class="ctx-desc">Summarise entire conversation</span></div>
+                    </div>
+                    <div class="ctx-menu-sep"></div>
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); clearConversation()">
+                        <span class="ctx-icon">🗑️</span>
+                        <div><span class="ctx-label">Clear Chat</span><span class="ctx-desc">Delete all messages and start fresh</span></div>
+                    </div>
+                </div>
+            </div>
+            <select class="model-select" id="model-select" style="background:var(--bg-secondary,#161b22);color:var(--text-muted,#8b949e);border:1px solid var(--border,#30363d);border-radius:6px;padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+                <option value="quick">Quick</option>
+                <option value="standard">Standard</option>
+                <option value="dual">Dual GPU</option>
+                <option value="long">Long</option>
+                <option value="precise">Precise</option>
+                <option value="image">Image</option>
+                {% if rate_info.is_premium %}<option value="vision">Vision</option>{% endif %}
+            </select>
+            <div class="chat-header-right">
+                {% if not rate_info.is_premium %}
+                <span class="rate-limit-badge" id="rate-limit-badge">
+                    {{ rate_info.used }}/{{ rate_info.limit }} messages
+                </span>
+                {% else %}
+
+                {% endif %}
+            </div>
+        </div>
+        {% if not rate_info.is_premium %}
+        <div class="rate-limit-bar" id="rate-limit-bar">
+            <div class="rate-limit-fill" style="width: {{ (rate_info.used / rate_info.limit * 100)|int }}%"></div>
+        </div>
+        {% endif %}
+        <div class="chat-messages" id="chat-messages">
+            
+        {% for msg in messages %}
+            <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
+                <div class="message-avatar">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
+                <div class="message-content">
+                    <div class="message-text">{{ msg.content | render_message }}</div>
+                    {% if msg.role == 'user' %}
+                    <button class="msg-action btn-edit" onclick="startEdit({{ msg.id }})" title="Edit message">✏️</button>
+                    {% endif %}
+                    {% if msg.tokens_used and current_user.is_premium %}
+                    <span class="msg-tokens">⚡ {{ msg.tokens_used }} tokens</span>
+                    {% endif %}
+                </div>
+                {% if msg.role == 'assistant' and loop.last %}
+                <button class="msg-action btn-regenerate" onclick="regenerateLast()" title="Regenerate response">🔄</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="chat-input-area">
+            <form id="chat-form" onsubmit="sendMessage(event)">
+                <div id="image-preview-area" class="image-preview-area" style="display:none"></div>
+                <div class="chat-input-row">
+                    <label class="btn-attach" title="Attach image">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+                    </label>
+                    <textarea id="chat-input" placeholder="Type your message..." rows="1"
+                              onkeydown="handleKey(event)"></textarea>
+                    <button type="submit" id="send-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const threadId = {{ thread.id }};
+const chatUrl = "/chat/" + threadId + "/message";
+const messagesDiv = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const sendBtn = document.getElementById("send-btn");
+const isPremium = {{ 'true' if rate_info.is_premium else 'false' }};
+let isStreaming = false;
+let isThinking = false;
+
+marked.setOptions({ breaks: true, gfm: true });
+
+// ===== Image Upload State =====
+const MAX_IMAGES = 4;
+const MAX_IMAGE_MB = 20;
+let pendingImages = []; // Array of { dataUrl, name }
+
+const imageInput = document.getElementById('image-input');
+const imagePreviewArea = document.getElementById('image-preview-area');
+
+imageInput.addEventListener('change', async function() {
+    const files = Array.from(this.files);
+    this.value = '';
+    
+    for (const file of files) {
+        if (pendingImages.length >= MAX_IMAGES) {
+            alert(`Maximum ${MAX_IMAGES} images per message.`);
+            break;
+        }
+        if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+            alert(`Image too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
+            continue;
+        }
+        
+        // Read as data URL
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+        
+        pendingImages.push({ dataUrl, name: file.name });
+    }
+    
+    renderImagePreviews();
+});
+
+function renderImagePreviews() {
+    if (pendingImages.length === 0) {
+        imagePreviewArea.style.display = 'none';
+        imagePreviewArea.innerHTML = '';
+        return;
+    }
+    
+    imagePreviewArea.style.display = 'flex';
+    imagePreviewArea.innerHTML = pendingImages.map((img, i) =>
+        '<div class="image-preview-item">' +
+        '<img src="' + img.dataUrl + '" alt="' + escapeHtml(img.name) + '">' +
+        '<button class="image-preview-remove" onclick="removeImage(' + i + ')" title="Remove">✕</button>' +
+        '</div>'
+    ).join('');
+}
+
+function removeImage(index) {
+    pendingImages.splice(index, 1);
+    renderImagePreviews();
+}
+
+function applyTokenHighlight(div, totalTokens) {
+    if (!isPremium || !totalTokens || totalTokens <= 4096) return;
+    div.dataset.tokens = totalTokens;
+    if (totalTokens > 8192) {
+        div.classList.add('message-tokens-danger');
+    } else {
+        div.classList.add('message-tokens-warning');
+    }
+    updateContextWheel();
+}
+
+function highlightExistingMessages() {
+    document.querySelectorAll('.message[data-tokens]').forEach(function(el) {
+        var t = parseInt(el.dataset.tokens);
+        applyTokenHighlight(el, t);
+    });
+}
+
+var MODE_MAX_CTX = {quick: 65536, standard: 65536, dual: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536};
+
+function getSelectedMode() { return document.getElementById('model-select').value; }
+
+function updateContextWheel() {
+    var total = 0;
+    document.querySelectorAll('.message[data-tokens]').forEach(function(el) {
+        total += parseInt(el.dataset.tokens) || 0;
+    });
+    var mode = getSelectedMode();
+    var maxCtx = MODE_MAX_CTX[mode] || 65536;
+    var pct = Math.min(100, Math.round(total / maxCtx * 100));
+    var fill = document.getElementById('context-ring-fill');
+    var label = document.getElementById('context-pct');
+    if (!fill) return;
+    var circumference = 97.39;
+    fill.style.strokeDashoffset = circumference - (circumference * pct / 100);
+    fill.classList.remove('warn', 'danger');
+    label.classList.remove('warn', 'danger');
+    if (pct > 85) { fill.classList.add('danger'); label.classList.add('danger'); }
+    else if (pct > 60) { fill.classList.add('warn'); label.classList.add('warn'); }
+    label.textContent = pct + '%';
+}
+
+function onModeChange() {
+    updateContextWheel();
+    var mode = getSelectedMode();
+    var attachBtn = document.querySelector('.btn-attach');
+    if (attachBtn) attachBtn.style.display = (mode === 'vision') ? '' : 'none';
+    // Clear pending images if switching away from vision
+    if (mode !== 'vision' && pendingImages.length > 0) {
+        pendingImages = [];
+        renderImagePreviews();
+    }
+}
+
+document.getElementById('model-select').addEventListener('change', onModeChange);
+onModeChange();
+
+function scrollToBottom() {
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+function renderMd(text) {
+    try { return marked.parse(text); }
+    catch { return escapeHtml(text); }
+}
+
+function renderStreamingMd(text) {
+    let safe = text;
+    if ((safe.match(/```/g) || []).length % 2 !== 0) safe += "\n```";
+    if ((safe.match(/`/g) || []).length % 2 !== 0) safe += "`";
+    return renderMd(safe);
+}
+
+function updateRateLimit(used, limit) {
+    if (isPremium) return;
+    const badge = document.getElementById('rate-limit-badge');
+    const bar = document.getElementById('rate-limit-bar');
+    const fill = document.querySelector('.rate-limit-fill');
+    if (badge) badge.textContent = used + '/' + limit + ' messages';
+    if (fill) fill.style.width = Math.min((used / limit * 100), 100) + '%';
+    if (used >= limit && fill) {
+        fill.style.background = 'var(--danger)';
+    }
+}
+
+function showRateLimitModal(message) {
+    const existing = document.getElementById('rate-limit-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'rate-limit-modal';
+    modal.className = 'rate-limit-modal';
+    modal.innerHTML = '<div class="rate-limit-modal-content">' +
+        '<h3>⏳ Rate Limit Reached</h3>' +
+        '<p>' + escapeHtml(message) + '</p>' +
+        '<div class="rate-limit-modal-actions">' +
+        '<a href="/billing" class="btn btn-primary">Upgrade to Premium</a>' +
+        '<button class="btn btn-outline" onclick="document.getElementById(\'rate-limit-modal\').remove()">Got it</button>' +
+        '</div></div>';
+    document.body.appendChild(modal);
+}
+
+function addMessage(role, content, isMarkdown, msgId) {
+    const div = document.createElement("div");
+    div.className = "message message-" + role;
+    if (msgId) div.dataset.msgId = msgId;
+    const icon = role === "user" ? "👤" : "🌿";
+    const display = isMarkdown ? renderMd(content) : escapeHtml(content);
+    let actions = '';
+    if (role === 'user') {
+        actions = '<button class="msg-action btn-edit" onclick="startEdit(' + (msgId || 0) + ')" title="Edit message">✏️</button>';
+    }
+    div.innerHTML = '<div class="message-avatar">' + icon + '</div><div class="message-content"><div class="message-text">' + display + '</div>' + actions + '</div>';
+    messagesDiv.appendChild(div);
+    scrollToBottom();
+    return div;
+}
+
+function showThinking() {
+    const div = document.createElement("div");
+    div.className = "message message-assistant";
+    div.id = "thinking-msg";
+    div.innerHTML = '<div class="message-avatar">🌿</div><div class="message-content"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...</div></div>';
+    messagesDiv.appendChild(div);
+    scrollToBottom();
+}
+
+function removeThinking() {
+    const el = document.getElementById("thinking-msg");
+    if (el) el.remove();
+}
+
+function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage(e);
+    }
+}
+
+function autoResize() {
+    chatInput.style.height = "auto";
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + "px";
+}
+chatInput.addEventListener("input", autoResize);
+
+function updateRegenerateButton() {
+    document.querySelectorAll('.btn-regenerate').forEach(b => b.remove());
+    const assistantMsgs = document.querySelectorAll('.message-assistant');
+    if (assistantMsgs.length > 0) {
+        const last = assistantMsgs[assistantMsgs.length - 1];
+        const btn = document.createElement('button');
+        btn.className = 'msg-action btn-regenerate';
+        btn.title = 'Regenerate response';
+        btn.textContent = '🔄';
+        btn.onclick = regenerateLast;
+        last.appendChild(btn);
+    }
+}
+
+// ===== Context Menu =====
+function toggleCtxMenu(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('ctx-menu');
+    menu.classList.toggle('open');
+}
+function closeCtxMenu() {
+    var menu = document.getElementById('ctx-menu');
+    if (menu) menu.classList.remove('open');
+}
+document.addEventListener('click', closeCtxMenu);
+
+// ===== Clear Conversation =====
+async function clearConversation() {
+    if (isStreaming) return;
+    if (!confirm('Delete all messages in this conversation? This cannot be undone.')) return;
+    try {
+        const resp = await fetch('/chat/' + threadId + '/clear', { method: 'POST' });
+        if (resp.ok) {
+            messagesDiv.innerHTML = '';
+            updateContextWheel();
+            updateRegenerateButton();
+        }
+    } catch(e) {}
+}
+
+// ===== Progressive Compact — summarise oldest 50% =====
+async function progressiveCompact() {
+    if (isStreaming) return;
+    const allMsgs = messagesDiv.querySelectorAll('.message');
+    const msgCount = allMsgs.length;
+    if (msgCount < 4) {
+        // Not enough to progressively compact, fall back to full
+        return compactConversation();
+    }
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+
+    const halfPoint = Math.floor(msgCount / 2);
+    const keepCount = msgCount - halfPoint;
+
+    // Show indicator
+    const sysDiv = document.createElement('div');
+    sysDiv.className = 'message message-assistant message-compact-indicator';
+    sysDiv.innerHTML = '<div class="message-avatar">📝</div><div class="message-content"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>Compacting ' + halfPoint + ' older messages...</div></div>';
+    messagesDiv.appendChild(sysDiv);
+    scrollToBottom();
+
+    let fullResponse = "";
+    let textEl = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let startTime = performance.now();
+
+    try {
+        const resp = await fetch('/chat/' + threadId + '/compact/progressive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error) {
+                        sysDiv.remove();
+                        addMessage('assistant', '⚠️ ' + parsed.error, false);
+                        isStreaming = false;
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                    if (parsed.content) {
+                        if (!textEl) {
+                            sysDiv.remove();
+                            // Remove the oldest half of messages from DOM
+                            const msgs = messagesDiv.querySelectorAll('.message');
+                            for (let i = 0; i < halfPoint && msgs[i]; i++) {
+                                msgs[i].remove();
+                            }
+                            // Insert summary user message at the top
+                            const userDiv = addMessage('user', '📝 **Earlier conversation compacted** (' + halfPoint + ' messages → summary)\n\nHere is the summary:', false);
+                            messagesDiv.insertBefore(userDiv, messagesDiv.firstChild);
+                            // Insert assistant summary after it
+                            const assDiv = document.createElement('div');
+                            assDiv.className = 'message message-assistant';
+                            assDiv.innerHTML = '<div class="message-avatar">🌿</div><div class="message-content"><div class="message-text"></div></div>';
+                            userDiv.after(assDiv);
+                            textEl = assDiv.querySelector('.message-text');
+                        }
+                        fullResponse += parsed.content;
+                        textEl.innerHTML = renderStreamingMd(fullResponse);
+                        scrollToBottom();
+                    }
+                    if (parsed.done && parsed.compacted) {
+                        promptTokens = parsed.prompt_tokens || 0;
+                        completionTokens = parsed.completion_tokens || 0;
+                    }
+                } catch {}
+            }
+        }
+
+        // Finalise
+        if (fullResponse && textEl) {
+            textEl.innerHTML = renderMd(fullResponse);
+            const totalTokens = promptTokens + completionTokens;
+            if (totalTokens > 0) {
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'msg-tokens';
+                const endTime = performance.now();
+                const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+                const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+                tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+                textEl.closest('.message-content').appendChild(tokenSpan);
+            }
+            updateContextWheel();
+        }
+    } catch (err) {
+        sysDiv.remove();
+        addMessage('assistant', '⚠️ Error: ' + err.message, false);
+    }
+
+    // Persist
+    if (fullResponse) {
+        const totalTokens = promptTokens + completionTokens;
+        try {
+            await fetch('/chat/' + threadId + '/compact/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: fullResponse,
+                    msg_count: halfPoint,
+                    compact_type: 'progressive',
+                    tokens_used: totalTokens > 0 ? totalTokens : null
+                })
+            });
+        } catch (e) {}
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+}
+
+// ===== /compact — Summarise entire conversation =====
+async function compactConversation() {
+    if (isStreaming) return;
+    const msgCount = messagesDiv.querySelectorAll('.message').length;
+    if (msgCount < 2) {
+        addMessage('assistant', '⚠️ Not enough messages to compact.', false);
+        return;
+    }
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+
+    // Show a system message indicating compaction
+    const sysDiv = document.createElement('div');
+    sysDiv.className = 'message message-assistant message-compact-indicator';
+    sysDiv.innerHTML = '<div class="message-avatar">📝</div><div class="message-content"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>Compacting ' + msgCount + ' messages...</div></div>';
+    messagesDiv.appendChild(sysDiv);
+    scrollToBottom();
+
+    let fullResponse = "";
+    let textEl = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let startTime = performance.now();
+    let firstTokenTime = null;
+
+    try {
+        const resp = await fetch('/chat/' + threadId + '/compact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error) {
+                        sysDiv.remove();
+                        addMessage('assistant', '⚠️ ' + parsed.error, false);
+                        isStreaming = false;
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                    if (parsed.content) {
+                        if (!textEl) {
+                            sysDiv.remove();
+                            // Clear all existing messages
+                            messagesDiv.innerHTML = '';
+                            // Add compacted user message
+                            const userDiv = addMessage('user', '📝 **Conversation compacted** (' + msgCount + ' messages → summary)\n\nHere is the summary of our previous conversation:', false);
+                            // Start the assistant summary
+                            const assDiv = addMessage('assistant', '', false);
+                            textEl = assDiv.querySelector('.message-text');
+                            if (!firstTokenTime) firstTokenTime = performance.now();
+                        }
+                        fullResponse += parsed.content;
+                        textEl.innerHTML = renderStreamingMd(fullResponse);
+                        scrollToBottom();
+                    }
+                    if (parsed.done && parsed.compacted) {
+                        promptTokens = parsed.prompt_tokens || 0;
+                        completionTokens = parsed.completion_tokens || 0;
+                    }
+                } catch {}
+            }
+        }
+
+        // Finalise
+        if (fullResponse && textEl) {
+            textEl.innerHTML = renderMd(fullResponse);
+            const totalTokens = promptTokens + completionTokens;
+            if (totalTokens > 0) {
+                const lastContent = textEl.closest('.message-content');
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'msg-tokens';
+                const endTime = performance.now();
+                const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+                const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+                tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+                lastContent.appendChild(tokenSpan);
+                applyTokenHighlight(textEl.closest('.message'), totalTokens);
+            }
+            updateRegenerateButton();
+            // Set data-tokens on compacted messages and update context ring
+            if (totalTokens > 0) {
+                const userMsg = messagesDiv.querySelector('.message-user');
+                const assMsg = messagesDiv.querySelector('.message-assistant');
+                if (userMsg) userMsg.dataset.tokens = promptTokens;
+                if (assMsg) assMsg.dataset.tokens = completionTokens;
+            }
+            updateContextWheel();
+        }
+    } catch (err) {
+        sysDiv.remove();
+        addMessage('assistant', '⚠️ Error: ' + err.message, false);
+    }
+
+    // Persist the compaction to the DB
+    if (fullResponse) {
+        const totalTokens = promptTokens + completionTokens;
+        try {
+            await fetch('/chat/' + threadId + '/compact/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: fullResponse,
+                    msg_count: msgCount,
+                    tokens_used: totalTokens > 0 ? totalTokens : null
+                })
+            });
+        } catch (e) {}
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+}
+
+async function sendMessage(e) {
+    e.preventDefault();
+    if (isStreaming) return;
+
+    const content = chatInput.value.trim();
+
+    // /compact command — compact the entire conversation
+    if (content === '/compact') {
+        chatInput.value = "";
+        autoResize();
+        await compactConversation();
+        return;
+    }
+    if (!content && pendingImages.length === 0) return;
+
+    const imagesToSend = [...pendingImages];
+    pendingImages = [];
+    renderImagePreviews();
+
+    chatInput.value = "";
+    autoResize();
+    isStreaming = true;
+    sendBtn.disabled = true;
+
+    // Show images + text in the user message
+    const displayText = content || '';
+    const userDiv = addMessage("user", displayText, false);
+    
+    // If there are images, show them in the user message
+    if (imagesToSend.length > 0) {
+        const textEl = userDiv.querySelector('.message-text');
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'message-images';
+        imagesToSend.forEach(img => {
+            const imgEl = document.createElement('img');
+            imgEl.src = img.dataUrl;
+            imgEl.className = 'message-image';
+            imgEl.alt = img.name;
+            imgContainer.appendChild(imgEl);
+        });
+        textEl.appendChild(imgContainer);
+    }
+    
+    scrollToBottom();
+    showThinking();
+
+    const selectedMode = document.getElementById('model-select').value;
+
+    // Image generation mode (SSE streaming with progress)
+    if (selectedMode === 'image') {
+        removeThinking();
+        try {
+            showThinking();
+            var thinkingMsg = document.getElementById("thinking-msg");
+            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
+            if (indicator) {
+                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="gen-progress-fill"></div></div><div class="gen-progress-text"><span id="gen-progress-label">Starting generation...</span><span id="gen-progress-eta"></span></div></div>';
+            }
+
+            var genStartTime = performance.now();
+            var stepTimes = [];
+            var totalSteps = 9;
+
+            const imgResp = await fetch("/chat/" + threadId + "/generate-image-stream", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: content, width: 512, height: 512 })
+            });
+
+            const reader = imgResp.body.getReader();
+            const decoder = new TextDecoder();
+            var buffer = '';
+            var imgData = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li].trim();
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        var event = JSON.parse(line.substring(6));
+                    } catch (e) { continue; }
+
+                    if (event.error) {
+                        removeThinking();
+                        addMessage("assistant", "\u26a0\ufe0f " + event.error);
+                        imgData = { error: true };
+                        break;
+                    }
+
+                    if (event.stage === 'loading') {
+                        var label = document.getElementById('gen-progress-label');
+                        if (label) label.textContent = 'Loading model...';
+                    } else if (event.stage === 'encoding') {
+                        var label = document.getElementById('gen-progress-label');
+                        if (label) label.textContent = 'Encoding prompt...';
+                        var fill = document.getElementById('gen-progress-fill');
+                        if (fill) fill.style.width = '5%';
+                    } else if (event.stage === 'diffusion') {
+                        stepTimes.push(performance.now());
+                        var step = event.step;
+                        var estTotal = totalSteps;
+                        if (event.total_steps) estTotal = event.total_steps;
+                        var pct = Math.round(5 + (step / estTotal) * 85);
+                        var fill = document.getElementById('gen-progress-fill');
+                        if (fill) fill.style.width = pct + '%';
+                        var label = document.getElementById('gen-progress-label');
+                        if (label) label.textContent = 'Diffusion step ' + step + '/' + estTotal;
+                        var etaEl = document.getElementById('gen-progress-eta');
+                        if (etaEl && stepTimes.length >= 2) {
+                            var elapsed = stepTimes[stepTimes.length - 1] - stepTimes[0];
+                            var avgStep = elapsed / (stepTimes.length - 1);
+                            var remaining = avgStep * (estTotal - step);
+                            if (remaining > 1000) {
+                                etaEl.textContent = '~' + Math.ceil(remaining / 1000) + 's remaining';
+                            } else {
+                                etaEl.textContent = 'Almost done...';
+                            }
+                        }
+                    } else if (event.stage === 'decoding') {
+                        var fill = document.getElementById('gen-progress-fill');
+                        if (fill) fill.style.width = '95%';
+                        var label = document.getElementById('gen-progress-label');
+                        if (label) label.textContent = 'Decoding image...';
+                        var etaEl = document.getElementById('gen-progress-eta');
+                        if (etaEl) etaEl.textContent = '';
+                    } else if (event.stage === 'done') {
+                        var fill = document.getElementById('gen-progress-fill');
+                        if (fill) fill.style.width = '100%';
+                        imgData = event;
+                    }
+                }
+                if (imgData && imgData.error) break;
+            }
+
+            if (imgData && !imgData.error && imgData.url) {
+                removeThinking();
+                var assistantDiv = addMessage("assistant", "");
+                var msgText = assistantDiv.querySelector('.message-text');
+                var imgEl = document.createElement('img');
+                imgEl.src = imgData.url;
+                imgEl.style.maxWidth = '100%';
+                imgEl.style.borderRadius = '8px';
+                imgEl.style.marginTop = '8px';
+                msgText.appendChild(imgEl);
+                // Save the message with image reference
+                await fetch("/chat/" + threadId + "/save", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: JSON.stringify([{type: "text", text: "Generated image: " + content.substring(0, 100)}, {type: "image", file: imgData.filename, name: imgData.filename}]), tokens_used: 0, message_type: "mixed" })
+                });
+            } else if (!imgData || !imgData.error) {
+                removeThinking();
+                addMessage("assistant", "\u26a0\ufe0f Image generation failed: no response");
+            }
+        } catch (err) {
+            removeThinking();
+            addMessage("assistant", "\u26a0\ufe0f Image generation failed: " + err.message);
+        }
+        isStreaming = false;
+        sendBtn.disabled = false;
+        scrollToBottom();
+        return;
+    }
+
+
+    let fullResponse = "";
+    let textEl = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let startTime = performance.now();
+    let firstTokenTime = null;
+
+    try {
+        const resp = await fetch(chatUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: content, images: imagesToSend.map(i => i.dataUrl), mode: document.getElementById('model-select').value })
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error === "rate_limited") {
+                        removeThinking();
+                        showRateLimitModal(parsed.message);
+                        isStreaming = false;
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                    if (parsed.thinking_start) {
+                        isThinking = true;
+                        if (!textEl) {
+                            // Update thinking indicator text
+                            var thinkEl = document.getElementById("thinking-msg");
+                            if (thinkEl) {
+                                thinkEl.querySelector(".thinking-indicator").innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...';
+                            }
+                        }
+                    }
+                    if (parsed.thinking_end) { isThinking = false; }
+                    if (parsed.content) {
+                        if (!textEl) {
+                            removeThinking();
+                            const div = addMessage("assistant", "", false);
+                            textEl = div.querySelector(".message-text");
+                            if (!firstTokenTime) firstTokenTime = performance.now();
+                        }
+                        fullResponse += parsed.content;
+                        textEl.innerHTML = renderStreamingMd(fullResponse);
+                        textEl.classList.add('streaming-cursor');
+                        scrollToBottom();
+                    }
+                    if (parsed.done) {
+                        promptTokens = parsed.prompt_tokens || 0;
+                        completionTokens = parsed.completion_tokens || 0;
+                    }
+                } catch {}
+            }
+        }
+
+        if (!fullResponse) {
+            removeThinking();
+            addMessage("assistant", "⚠️ No response received.", false);
+        } else {
+            textEl.classList.remove('streaming-cursor');
+            textEl.innerHTML = renderMd(fullResponse);
+            const totalTokens = promptTokens + completionTokens;
+            if (totalTokens > 0) {
+                const lastContent = textEl.closest('.message-content');
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'msg-tokens';
+                const endTime = performance.now();
+                const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+                const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+                tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+                lastContent.appendChild(tokenSpan);
+                applyTokenHighlight(textEl.closest('.message'), totalTokens);
+            }
+            updateRegenerateButton();
+            // Update rate limit display
+            if (!isPremium) {
+                const badge = document.getElementById('rate-limit-badge');
+                if (badge) {
+                    const parts = badge.textContent.split('/');
+                    const newUsed = parseInt(parts[0]) + 1;
+                    updateRateLimit(newUsed, parseInt(parts[1].split(' ')[0]));
+                }
+            }
+        }
+    } catch (err) {
+        removeThinking();
+        addMessage("assistant", "⚠️ Error: " + err.message, false);
+    }
+
+    // Save to DB
+    if (fullResponse) {
+        const totalTokens = promptTokens + completionTokens;
+        try {
+            await fetch("/chat/" + threadId + "/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
+            });
+        } catch (e) {}
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+}
+
+// ===== Edit Message =====
+function startEdit(msgId) {
+    const msgDiv = document.querySelector('[data-msg-id="' + msgId + '"]');
+    if (!msgDiv) return;
+
+    const textEl = msgDiv.querySelector('.message-text');
+    const currentText = textEl.textContent;
+    const contentEl = msgDiv.querySelector('.message-content');
+
+    const editArea = document.createElement('div');
+    editArea.className = 'edit-area';
+    editArea.innerHTML = '<textarea class="edit-textarea">' + escapeHtml(currentText) + '</textarea>' +
+        '<div class="edit-actions">' +
+        '<button class="btn btn-primary btn-sm" onclick="submitEdit(' + msgId + ')">Send</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="cancelEdit(' + msgId + ', ' + JSON.stringify(JSON.stringify(currentText)) + ')">Cancel</button>' +
+        '</div>';
+    textEl.style.display = 'none';
+    msgDiv.querySelector('.btn-edit').style.display = 'none';
+    const existingTokens = contentEl.querySelector('.msg-tokens');
+    if (existingTokens) existingTokens.style.display = 'none';
+    contentEl.appendChild(editArea);
+    editArea.querySelector('textarea').focus();
+
+    editArea.querySelector('textarea').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submitEdit(msgId);
+        }
+        if (e.key === 'Escape') {
+            cancelEdit(msgId, currentText);
+        }
+    });
+}
+
+function cancelEdit(msgId, originalText) {
+    const msgDiv = document.querySelector('[data-msg-id="' + msgId + '"]');
+    if (!msgDiv) return;
+    const editArea = msgDiv.querySelector('.edit-area');
+    if (editArea) editArea.remove();
+    const textEl = msgDiv.querySelector('.message-text');
+    textEl.style.display = '';
+    msgDiv.querySelector('.btn-edit').style.display = '';
+    const existingTokens = msgDiv.querySelector('.message-content > .msg-tokens');
+    if (existingTokens) existingTokens.style.display = '';
+}
+
+async function submitEdit(msgId) {
+    if (isStreaming) return;
+    const msgDiv = document.querySelector('[data-msg-id="' + msgId + '"]');
+    if (!msgDiv) return;
+
+    const textarea = msgDiv.querySelector('.edit-textarea');
+    const newContent = textarea.value.trim();
+    if (!newContent) return;
+
+    msgDiv.querySelector('.edit-area').remove();
+
+    const textEl = msgDiv.querySelector('.message-text');
+    textEl.textContent = newContent;
+    textEl.style.display = '';
+    const editBtn = msgDiv.querySelector('.btn-edit');
+    if (editBtn) editBtn.style.display = '';
+    const existingTokens = msgDiv.querySelector('.message-content > .msg-tokens');
+    if (existingTokens) existingTokens.remove();
+
+    const allMessages = Array.from(messagesDiv.querySelectorAll('.message'));
+    const editIndex = allMessages.indexOf(msgDiv);
+    for (let i = allMessages.length - 1; i > editIndex; i--) {
+        allMessages[i].remove();
+    }
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+    showThinking();
+
+    let fullResponse = "";
+    let respTextEl = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let startTime = performance.now();
+    let firstTokenTime = null;
+
+    try {
+        const resp = await fetch("/chat/" + threadId + "/edit/" + msgId, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: newContent, mode: document.getElementById('model-select').value })
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error === "rate_limited") {
+                        removeThinking();
+                        showRateLimitModal(parsed.message);
+                        isStreaming = false;
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                    if (parsed.thinking_start) { isThinking = true; }
+                    if (parsed.thinking_end) { isThinking = false; }
+                    if (parsed.content) {
+                        if (!respTextEl) {
+                            removeThinking();
+                            const div = addMessage("assistant", "", false);
+                            respTextEl = div.querySelector(".message-text");
+                            if (!firstTokenTime) firstTokenTime = performance.now();
+                        }
+                        fullResponse += parsed.content;
+                        respTextEl.innerHTML = renderStreamingMd(fullResponse);
+                        scrollToBottom();
+                    }
+                    if (parsed.done) {
+                        promptTokens = parsed.prompt_tokens || 0;
+                        completionTokens = parsed.completion_tokens || 0;
+                    }
+                } catch {}
+            }
+        }
+
+        if (fullResponse && respTextEl) {
+            respTextEl.innerHTML = renderMd(fullResponse);
+            const totalTokens = promptTokens + completionTokens;
+            if (totalTokens > 0) {
+                const lastContent = respTextEl.closest('.message-content');
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'msg-tokens';
+                const endTime = performance.now();
+                const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+                const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+                tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+                lastContent.appendChild(tokenSpan);
+                applyTokenHighlight(respTextEl.closest('.message'), totalTokens);
+            }
+            updateRegenerateButton();
+        }
+    } catch (err) {
+        removeThinking();
+        addMessage("assistant", "⚠️ Error: " + err.message, false);
+    }
+
+    if (fullResponse) {
+        const totalTokens = promptTokens + completionTokens;
+        try {
+            await fetch("/chat/" + threadId + "/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
+            });
+        } catch (e) {}
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+}
+
+// ===== Regenerate Last Response =====
+async function regenerateLast() {
+    if (isStreaming) return;
+
+    const assistantMsgs = document.querySelectorAll('.message-assistant');
+    if (assistantMsgs.length === 0) return;
+    assistantMsgs[assistantMsgs.length - 1].remove();
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+    showThinking();
+
+    let fullResponse = "";
+    let textEl = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let startTime = performance.now();
+    let firstTokenTime = null;
+
+    try {
+        const resp = await fetch("/chat/" + threadId + "/regenerate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: document.getElementById('model-select').value })
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error === "rate_limited") {
+                        removeThinking();
+                        showRateLimitModal(parsed.message);
+                        isStreaming = false;
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                    if (parsed.thinking_start) {
+                        isThinking = true;
+                        if (!textEl) {
+                            // Update thinking indicator text
+                            var thinkEl = document.getElementById("thinking-msg");
+                            if (thinkEl) {
+                                thinkEl.querySelector(".thinking-indicator").innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...';
+                            }
+                        }
+                    }
+                    if (parsed.thinking_end) { isThinking = false; }
+                    if (parsed.content) {
+                        if (!textEl) {
+                            removeThinking();
+                            const div = addMessage("assistant", "", false);
+                            textEl = div.querySelector(".message-text");
+                            if (!firstTokenTime) firstTokenTime = performance.now();
+                        }
+                        fullResponse += parsed.content;
+                        textEl.innerHTML = renderStreamingMd(fullResponse);
+                        textEl.classList.add('streaming-cursor');
+                        scrollToBottom();
+                    }
+                    if (parsed.done) {
+                        promptTokens = parsed.prompt_tokens || 0;
+                        completionTokens = parsed.completion_tokens || 0;
+                    }
+                } catch {}
+            }
+        }
+
+        if (fullResponse && textEl) {
+            textEl.innerHTML = renderMd(fullResponse);
+            const totalTokens = promptTokens + completionTokens;
+            if (totalTokens > 0) {
+                const lastContent = textEl.closest('.message-content');
+                const tokenSpan = document.createElement('span');
+                tokenSpan.className = 'msg-tokens';
+                const endTime = performance.now();
+                const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+                const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+                tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+                lastContent.appendChild(tokenSpan);
+                applyTokenHighlight(textEl.closest('.message'), totalTokens);
+            }
+            updateRegenerateButton();
+        }
+    } catch (err) {
+        removeThinking();
+        addMessage("assistant", "⚠️ Error: " + err.message, false);
+    }
+
+    if (fullResponse) {
+        const totalTokens = promptTokens + completionTokens;
+        try {
+            await fetch("/chat/" + threadId + "/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
+            });
+        } catch (e) {}
+    }
+
+    isStreaming = false;
+    sendBtn.disabled = false;
+}
+
+// ===== Sidebar Search =====
+const searchInput = document.getElementById('sidebar-search');
+const searchResults = document.getElementById('sidebar-search-results');
+let searchTimeout = null;
+
+if (searchInput) {
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const q = this.value.trim();
+        if (q.length < 2) {
+            searchResults.innerHTML = '';
+            searchResults.classList.remove('active');
+            return;
+        }
+        searchTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
+                const data = await resp.json();
+                if (data.results && data.results.length > 0) {
+                    searchResults.innerHTML = data.results.map(r => {
+                        const icon = r.role === 'user' ? '👤' : '🌿';
+                        return '<a href="/chat/' + r.thread_id + '" class="search-result">' +
+                            '<span class="search-result-icon">' + icon + '</span>' +
+                            '<span class="search-result-text">' + escapeHtml(r.content) + '</span></a>';
+                    }).join('');
+                    searchResults.classList.add('active');
+                } else {
+                    searchResults.innerHTML = '<div class="search-empty">No results</div>';
+                    searchResults.classList.add('active');
+                }
+            } catch (e) {}
+        }, 300);
+    });
+
+    searchInput.addEventListener('blur', function() {
+        setTimeout(() => {
+            searchResults.classList.remove('active');
+        }, 200);
+    });
+}
+
+function openSidebar() {
+    document.getElementById("sidebar").classList.add("open");
+    document.getElementById("sidebar-overlay").classList.add("active");
+}
+function closeSidebar() {
+    document.getElementById("sidebar").classList.remove("open");
+    document.getElementById("sidebar-overlay").classList.remove("active");
+}
+
+// Render existing assistant messages as markdown
+document.querySelectorAll(".message-assistant .message-text").forEach(function(el) {
+    el.innerHTML = renderMd(el.textContent);
+});
+
+// Render images in existing user messages (multimodal JSON content)
+document.querySelectorAll(".message-user .message-text").forEach(function(el) {
+    const text = el.textContent.trim();
+    if (!text.startsWith('[')) return;
+    try {
+        const parts = JSON.parse(text);
+        if (!Array.isArray(parts)) return;
+        const hasImage = parts.some(p => p.type === 'image');
+        if (!hasImage) return;
+        
+        // Rebuild with images
+        el.innerHTML = '';
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'message-images';
+        parts.forEach(p => {
+            if (p.type === 'text' && p.text) {
+                el.appendChild(document.createTextNode(p.text));
+            } else if (p.type === 'image' && p.url) {
+                const imgEl = document.createElement('img');
+                imgEl.src = p.url;
+                imgEl.className = 'message-image';
+                imgContainer.appendChild(imgEl);
+            }
+        });
+        if (imgContainer.children.length > 0) {
+            el.appendChild(imgContainer);
+        }
+    } catch(e) {}
+});
+
+updateRegenerateButton();
+highlightExistingMessages();
+updateContextWheel();
+scrollToBottom();
+
+// ===== Reconnection Logic =====
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 3;
+
+function showReconnectBanner(msg) {
+    let banner = document.getElementById('reconnect-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'reconnect-banner';
+        banner.className = 'reconnect-banner';
+        document.body.appendChild(banner);
+    }
+    banner.textContent = msg;
+}
+
+function hideReconnectBanner() {
+    const banner = document.getElementById('reconnect-banner');
+    if (banner) banner.remove();
+}
+
+// Monitor fetch errors in streaming for reconnection
+const originalFetch = window.fetch;
+window.fetch = function(...args) {
+    return originalFetch.apply(this, args).catch(err => {
+        if (isStreaming && reconnectAttempts < MAX_RECONNECT) {
+            reconnectAttempts++;
+            showReconnectBanner('⚠️ Connection lost — retrying (' + reconnectAttempts + '/' + MAX_RECONNECT + ')...');
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    hideReconnectBanner();
+                    resolve(originalFetch.apply(this, args));
+                }, 2000 * reconnectAttempts);
+            });
+        }
+        hideReconnectBanner();
+        reconnectAttempts = 0;
+        throw err;
+    }).then(resp => {
+        if (resp && resp.ok) {
+            reconnectAttempts = 0;
+            hideReconnectBanner();
+        }
+        return resp;
+    });
+};
+
+// Online/offline detection
+window.addEventListener('offline', () => showReconnectBanner('📡 You're offline — waiting for connection...'));
+window.addEventListener('online', () => hideReconnectBanner());
+</script>
+{% endblock %}

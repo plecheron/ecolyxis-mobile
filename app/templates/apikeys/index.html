@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}API Keys — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            {% for t in threads %}
+            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item">
+                <span class="thread-title">{{ t.title }}</span>
+                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+        <div class="sidebar-footer">
+            {% if current_user.id == 1 %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
+            <span class="user-name">👤 {{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <main class="main-content">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">🌿 API Keys</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+        <div class="dashboard-main">
+            <div class="dashboard-header">
+                <h2>🔑 API Keys</h2>
+                <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline btn-sm">← Dashboard</a>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+            <div class="api-flash api-flash-{{ category }}">
+                {% if category == 'success' and message.startswith('API key created!') %}
+                <p>API key created! <strong>Copy it now — it won't be shown again.</strong></p>
+                <div class="api-key-reveal">
+                    <code id="new-key">{{ message.split('\n\n')[1] if '\n\n' in message else '' }}</code>
+                    <button class="btn btn-outline btn-sm" onclick="copyKey()">📋 Copy</button>
+                </div>
+                {% else %}
+                {{ message }}
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% endwith %}
+
+            <div class="api-section">
+                <div class="api-section-header">
+                    <h3>Your Keys ({{ keys|length }}/{{ max_keys }})</h3>
+                    {% if keys|length < max_keys %}
+                    <form method="POST" action="{{ url_for('apikeys.create') }}" class="inline-form">
+                        <input type="text" name="name" placeholder="Key name (e.g. Laptop)" maxlength="80" class="input-sm">
+                        <button type="submit" class="btn btn-primary btn-sm">+ Create Key</button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                {% if keys %}
+                <div class="api-keys-list">
+                    {% for key in keys %}
+                    <div class="api-key-card {{ '' if key.active else 'api-key-revoked' }}">
+                        <div class="api-key-info">
+                            <div class="api-key-name">
+                                {{ key.name }}
+                                <span class="api-key-status {{ 'status-active' if key.active else 'status-revoked' }}">
+                                    {{ '● Active' if key.active else '● Revoked' }}
+                                </span>
+                            </div>
+                            <div class="api-key-meta">
+                                <span>...{{ key.key_prefix }}</span>
+                                <span>Created {{ key.created_at.strftime('%d %b %Y') }}</span>
+                                {% if key.last_used_at %}
+                                <span>Last used {{ key.last_used_at.strftime('%d %b %Y') }}</span>
+                                {% else %}
+                                <span>Never used</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="api-key-usage">
+                            {% set stats = key_stats.get(key.id, {}) %}
+                            <div class="usage-stat">
+                                <span class="usage-value">{{ '{:,}'.format(stats.get('daily', 0)) }}</span>
+                                <span class="usage-label">Today</span>
+                            </div>
+                            <div class="usage-stat">
+                                <span class="usage-value">{{ '{:,}'.format(stats.get('weekly', 0)) }}</span>
+                                <span class="usage-label">7 Days</span>
+                            </div>
+                            <div class="usage-stat">
+                                <span class="usage-value">{{ '{:,}'.format(stats.get('monthly', 0)) }}</span>
+                                <span class="usage-label">30 Days</span>
+                            </div>
+                        </div>
+                        <div class="api-key-actions">
+                            {% if key.active %}
+                            <form method="POST" action="{{ url_for('apikeys.revoke', key_id=key.id) }}">
+                                <button type="submit" class="btn btn-outline btn-sm" onclick="return confirm('Revoke this key? It will stop working immediately.')">Revoke</button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('apikeys.delete', key_id=key.id) }}">
+                                <button type="submit" class="btn btn-outline btn-sm btn-danger" onclick="return confirm('Delete this key and all usage data?')">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <p>🔑 No API keys yet. Create one to get started.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="api-section">
+                <h3>📖 Quick Start</h3>
+                <div class="api-docs-box">
+                    <p>Use your API key with any OpenAI-compatible client. Set the base URL to:</p>
+                    <div class="code-block">
+                        <code>https://ecolyxis.co.uk/v1</code>
+                    </div>
+
+                    <h4>Python (openai SDK)</h4>
+                    <pre class="code-block"><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://ecolyxis.co.uk/v1",
+    api_key="ecolyx_your_key_here"
+)
+
+response = client.chat.completions.create(
+    model="ecolyxis",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)</code></pre>
+
+                    <h4>curl</h4>
+                    <pre class="code-block"><code>curl https://ecolyxis.co.uk/v1/chat/completions \
+  -H "Authorization: Bearer ecolyx_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"ecolyxis","messages":[{"role":"user","content":"Hello!"}]}'</code></pre>
+
+                    <h4>Streaming</h4>
+                    <pre class="code-block"><code>response = client.chat.completions.create(
+    model="ecolyxis",
+    messages=[{"role": "user", "content": "Hello!"}],
+    stream=True
+)
+for chunk in response:
+    print(chunk.choices[0].delta.content or "", end="")</code></pre>
+
+                    <h4>Limits</h4>
+                    <ul>
+                        <li>30 requests per minute</li>
+                        <li>60 messages per minute</li>
+                        <li>500,000 tokens per day (resets midnight UTC)</li>
+                        <li>Max 5 API keys per account</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<script>
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
+}
+function copyKey() {
+    const el = document.getElementById('new-key');
+    navigator.clipboard.writeText(el.textContent);
+    const btn = el.nextElementSibling;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy', 2000);
+}
+</script>
+{% endblock %}

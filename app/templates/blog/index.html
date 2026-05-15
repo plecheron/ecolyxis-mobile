@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Updates — Ecolyxis{% endblock %}
+{% block body %}
+<div class="landing">
+    <nav class="landing-nav">
+        <div class="nav-brand"><a href="/" style="text-decoration:none;color:inherit;">🌿 Ecolyxis</a></div>
+        <div class="nav-links">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-outline">Log In</a>
+            <a href="{{ url_for('auth.signup') }}" class="btn btn-primary">Get Started</a>
+        </div>
+    </nav>
+
+    <section class="blog-section" style="max-width:720px;margin:2rem auto;padding:0 1.5rem;">
+        <h1 style="font-size:2rem;margin-bottom:0.5rem;">📰 Updates</h1>
+        <p style="color:var(--text-muted);margin-bottom:2rem;">What's new with Ecolyxis.</p>
+
+        {% if posts %}
+        {% for post in posts %}
+        <article class="blog-card" style="background:var(--bg-secondary,#161b22);border:1px solid var(--border,#30363d);border-radius:12px;padding:1.5rem;margin-bottom:1.25rem;transition:border-color 0.2s;">
+            <a href="{{ url_for('blog.view', slug=post.slug) }}" style="text-decoration:none;color:inherit;">
+                <h2 style="font-size:1.25rem;margin:0 0 0.4rem;">{{ post.title }}</h2>
+                <time style="font-size:0.8rem;color:var(--text-muted,#8b949e);">{{ post.created_at.strftime('%d %B %Y') }}</time>
+                <p style="color:var(--text-secondary,#c9d1d9);margin:0.75rem 0 0;line-height:1.5;">{{ post.summary }}</p>
+            </a>
+        </article>
+        {% endfor %}
+        {% else %}
+        <p style="color:var(--text-muted);text-align:center;padding:3rem 0;">No posts yet. Check back soon!</p>
+        {% endif %}
+    </section>
+
+    <footer class="landing-footer">
+        <a href="/contact/">Contact Us</a> · <a href="/blog/">Updates</a>
+        <p>🌿 Ecolyxis — Powered by sustainable computing</p>
+    </footer>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Edit: {{ post.title }} — Ecolyxis Admin{% endblock %}
+{% block body %}
+<div style="max-width:800px;margin:2rem auto;padding:0 1.5rem;">
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
+        <a href="{{ url_for('blog.admin') }}" class="btn btn-outline btn-sm">← Back</a>
+        <h2 style="margin:0;">Edit Post</h2>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div style="padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;background:{{ '#1a3a1a' if category == 'success' else '#3a1a1a' }};color:{{ '#4ade80' if category == 'success' else '#f87171' }};">
+        {{ message }}
+    </div>
+    {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('blog.edit', post_id=post.id) }}" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;">
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Title</label>
+            <input type="text" name="title" value="{{ post.title }}" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
+        </div>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Slug</label>
+            <input type="text" name="slug" value="{{ post.slug }}" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
+        </div>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Summary</label>
+            <input type="text" name="summary" value="{{ post.summary }}" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
+        </div>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Body <span style="color:var(--text-muted);">(Markdown)</span></label>
+            <textarea name="body" rows="16" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;font-family:monospace;">{{ post.body }}</textarea>
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:center;">
+            <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem;">
+                <input type="checkbox" name="publish" {{ 'checked' if post.published }}> Published
+            </label>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
