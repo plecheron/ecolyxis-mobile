@@ -155,10 +155,10 @@ def webhook():
 def _handle_checkout_completed(session_obj):
     """Handle checkout completion — either subscription or credit top-up."""
     metadata = _sd(session_obj, "metadata") or {}
-    user_id = _sd(metadata, "user_id") if isinstance(metadata, dict) else None
+    user_id = _sd(metadata, "user_id")
 
     # Check if this is a credit top-up (has type=api_credit_topup in metadata)
-    checkout_type = _sd(metadata, "type") if isinstance(metadata, dict) else None
+    checkout_type = _sd(metadata, "type")
     if checkout_type == "api_credit_topup":
         _handle_credit_topup(session_obj, metadata)
         return

@@ -127,12 +127,6 @@ def test_subscription_updated_past_due_downgrades(client, db, make_user):
     assert user.subscription_status == "past_due"
 
 
-@pytest.mark.xfail(
-    reason="Latent bug: _handle_checkout_completed gates checkout_type detection "
-    "on isinstance(metadata, dict), which is False for StripeObject — so "
-    "_handle_credit_topup is never reached. See billing.py:161.",
-    strict=True,
-)
 def test_credit_topup_credits_wallet(client, db, make_user):
     user = make_user()
     wallet = Wallet(user_id=user.id, balance_pence=0)
