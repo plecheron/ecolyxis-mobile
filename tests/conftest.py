@@ -35,18 +35,6 @@ def app():
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{_TEST_DB_PATH}",
         "WTF_CSRF_ENABLED": False,
     })
-
-    # Mirror run.py: register the landing route on the app object.
-    # The refactor will move this into the factory or a blueprint.
-    from flask import render_template, redirect, url_for
-    from flask_login import current_user
-
-    @app.route("/")
-    def landing():
-        if current_user.is_authenticated:
-            return redirect(url_for("dashboard.index"))
-        return render_template("landing.html")
-
     yield app
     try:
         os.unlink(_TEST_DB_PATH)

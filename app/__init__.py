@@ -55,6 +55,14 @@ def create_app(test_config=None):
     app.register_blueprint(health_bp)
     app.register_blueprint(pricing_bp)
 
+    @app.route("/")
+    def landing():
+        from flask import render_template, redirect, url_for
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            return redirect(url_for("dashboard.index"))
+        return render_template("landing.html")
+
     with app.app_context():
         from app.post_model import Post  # ensure model is registered
         import markdown as md_lib
