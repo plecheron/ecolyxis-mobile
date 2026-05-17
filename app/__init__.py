@@ -11,9 +11,11 @@ login_manager.login_view = "auth.login"
 login_manager.login_message = "Please log in to access your chats."
 
 
-def create_app():
+def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
+    if test_config:
+        app.config.update(test_config)
 
     db.init_app(app)
     migrate.init_app(app, db)
