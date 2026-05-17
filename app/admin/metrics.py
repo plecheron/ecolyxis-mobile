@@ -1,105 +1,18 @@
-from flask import Blueprint, render_template, jsonify, request
-from flask_login import login_required, current_user
-from app import db
-from app.models import User, Thread, Message
+"""Helpers that gather stats for the admin dashboard.
+
+System stats are pulled from /proc and systemctl. App stats come from
+the DB. LLM stats come from the llama.cpp prometheus-style /metrics
+endpoint. Chart helpers build day-grouped time series.
+"""
+import os
+import subprocess
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func, text
-import subprocess
-import os
-import threading
-import time
-import collections
+from flask import current_app
 
-admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+from app import db
+from app.models import User, Thread, Message
 
-# ── Background LLM metrics sampler ───────────────────────────────────
-# Stores (timestamp, gen_tps, prompt_tps, processing, deferred) every 5 seconds.
-# Kept in memory; lost on restart (acceptable for live dashboards).
-
-class _MetricsSampler:
-    INTERVAL = 5  # seconds
-    MAX_POINTS = 17280  # 24h at 5s intervals
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._data = collections.deque(maxlen=self.MAX_POINTS)
-        self._thread = None
-        self._started = False
-
-    def start(self):
-        if self._started:
-            return
-        self._started = True
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def _run(self):
-        while True:
-            try:
-                self._sample()
-            except Exception:
-                pass
-            time.sleep(self.INTERVAL)
-
-    def _sample(self):
-        try:
-            import requests
-            import os as _os
-            base = _os.environ.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
-            # Derive metrics URL: strip /v1, add /metrics on same host:port
-            metrics_base = base.rstrip("/").rsplit("/v1", 1)[0].rstrip("/")
-            r = requests.get(metrics_base + "/metrics", timeout=5)
-            if r.status_code != 200:
-                return
-            metrics = {}
-            for line in r.text.splitlines():
-                if line.startswith("#") or not line.strip():
-                    continue
-                key, _, val = line.partition(" ")
-                try:
-                    metrics[key] = float(val)
-                except ValueError:
-                    pass
-            entry = (
-                time.time(),
-                round(metrics.get("llamacpp:predicted_tokens_seconds", 0), 2),
-                round(metrics.get("llamacpp:prompt_tokens_seconds", 0), 2),
-                int(metrics.get("llamacpp:requests_processing", 0)),
-                int(metrics.get("llamacpp:requests_deferred", 0)),
-            )
-            with self._lock:
-                self._data.append(entry)
-        except Exception:
-            pass
-
-    def get_range(self, seconds):
-        cutoff = time.time() - seconds
-        with self._lock:
-            return [e for e in self._data if e[0] >= cutoff]
-
-
-_metrics_sampler = _MetricsSampler()
-_metrics_sampler.start()
-
-ADMIN_USERNAMES = os.environ.get("ADMIN_USERNAMES", "ashley").split(",")
-
-
-def admin_required(f):
-    """Decorator: must be logged in AND be admin (user ID 1 or in ADMIN_USERNAMES)."""
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not current_user.is_authenticated:
-            from flask import redirect, url_for, request
-            return redirect(url_for("auth.login", next=request.url))
-        if current_user.id != 1 and current_user.username not in ADMIN_USERNAMES:
-            from flask import abort
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated
-
-
-# ── helpers ──────────────────────────────────────────────────────────
 
 def _system_stats():
     stats = {}
@@ -202,7 +115,6 @@ def _app_stats():
     )
 
     avg_msgs = round(total_messages / total_users, 1) if total_users else 0
-
     recent_users = User.query.order_by(User.created_at.desc()).limit(10).all()
 
     recent_messages_raw = (
@@ -244,7 +156,6 @@ def _app_stats():
 def _llm_health():
     try:
         import requests
-        from flask import current_app
         base = current_app.config.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
         models_url = base.rstrip("/") + "/models"
         r = requests.get(models_url, timeout=5)
@@ -295,7 +206,6 @@ def _error_stats():
 def _llm_metrics():
     try:
         import requests
-        from flask import current_app
         base = current_app.config.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
         metrics_url = base.rstrip("/").rsplit("/v1", 1)[0].rstrip("/") + "/metrics"
         r = requests.get(metrics_url, timeout=5)
@@ -355,7 +265,6 @@ def _llm_error_stats():
 # ── Analytics helpers ────────────────────────────────────────────────
 
 def _day_group(col):
-    """SQLite-compatible day grouping."""
     return func.date_trunc("day", col)
 
 
@@ -374,14 +283,10 @@ def _token_chart_data(days=30):
         .order_by(text("day"))
         .all()
     )
-    result = []
-    for r in rows:
-        result.append({
-            "date": r.day if r.day else None,
-            "tokens": int(r.tokens),
-            "messages": int(r.messages),
-        })
-    return result
+    return [
+        {"date": r.day if r.day else None, "tokens": int(r.tokens), "messages": int(r.messages)}
+        for r in rows
+    ]
 
 
 def _user_chart_data(days=30):
@@ -389,7 +294,6 @@ def _user_chart_data(days=30):
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=days)
 
-    # Signups per day
     signups = (
         db.session.query(
             _day_group(User.created_at).label("day"),
@@ -402,7 +306,6 @@ def _user_chart_data(days=30):
     )
     signup_map = {r.day: int(r.count) for r in signups}
 
-    # Active users per day (users who sent at least 1 message that day)
     active = (
         db.session.query(
             _day_group(Message.created_at).label("day"),
@@ -416,7 +319,6 @@ def _user_chart_data(days=30):
     )
     active_map = {r.day: int(r.count) for r in active}
 
-    # Build complete day range
     days_list = []
     for i in range(days):
         d = (start + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -447,9 +349,8 @@ def _top_users(limit=20):
         .limit(limit)
         .all()
     )
-    result = []
-    for r in rows:
-        result.append({
+    return [
+        {
             "username": r.username,
             "email": r.email,
             "tier": r.tier,
@@ -457,114 +358,6 @@ def _top_users(limit=20):
             "total_tokens": int(r.total_tokens),
             "total_messages": int(r.total_messages),
             "last_active": r.last_active.isoformat() if r.last_active else None,
-        })
-    return result
-
-
-# ── routes ───────────────────────────────────────────────────────────
-
-@admin_bp.route("/")
-@login_required
-@admin_required
-def index():
-    sys_stats = _system_stats()
-    app_stats = _app_stats()
-    llm = _llm_health()
-
-    services = {
-        "ecolyxis (gunicorn)": _service_status("ecolyxis"),
-        "caddy": _service_status("caddy"),
-        "fail2ban": _service_status("fail2ban"),
-    }
-
-    return render_template(
-        "admin/index.html",
-        sys=sys_stats,
-        app=app_stats,
-        llm=llm,
-        services=services,
-        errors=_error_stats(),
-        llm_errors=_llm_error_stats(),
-        token_chart=_token_chart_data(30),
-        user_chart=_user_chart_data(30),
-        top_users=_top_users(20),
-        now=datetime.now(timezone.utc),
-    )
-
-
-@admin_bp.route("/api/llm-metrics")
-@login_required
-@admin_required
-def api_llm_metrics():
-    """Live LLM metrics — polled every 2s by the dashboard."""
-    return jsonify(_llm_metrics())
-
-
-@admin_bp.route("/api/errors")
-@login_required
-@admin_required
-def api_errors():
-    """Error stats — polled every 30s."""
-    return jsonify(_error_stats())
-
-
-@admin_bp.route("/api/llm-errors")
-@login_required
-@admin_required
-def api_llm_errors():
-    """LLM backend error stats."""
-    return jsonify(_llm_error_stats())
-
-
-@admin_bp.route("/api/stats")
-@login_required
-@admin_required
-def api_stats():
-    """JSON endpoint for live refresh."""
-    app_stats = _app_stats()
-    users_list = []
-    for u in app_stats.pop("recent_users"):
-        users_list.append({
-            "username": u.username,
-            "email": u.email,
-            "tier": u.tier,
-            "created_at": u.created_at.isoformat() if u.created_at else None,
-        })
-    app_stats["recent_users"] = users_list
-
-    for m in app_stats["recent_messages"]:
-        if isinstance(m.get("created_at"), datetime):
-            m["created_at"] = m["created_at"].isoformat()
-
-    return jsonify({
-        "system": _system_stats(),
-        "app": app_stats,
-        "llm": _llm_health(),
-        "services": {
-            "ecolyxis (gunicorn)": _service_status("ecolyxis"),
-            "caddy": _service_status("caddy"),
-            "fail2ban": _service_status("fail2ban"),
-        },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-
-
-@admin_bp.route("/api/llm-history")
-@login_required
-@admin_required
-def api_llm_history():
-    """Historical LLM gen speed for charts."""
-    minutes = request.args.get("minutes", "60", type=str)
-    seconds_map = {"1": 60, "60": 3600, "1440": 86400}
-    seconds = seconds_map.get(minutes, 3600)
-    raw = _metrics_sampler.get_range(seconds)
-    points = []
-    for ts, gen_tps, prompt_tps, proc, deferred in raw:
-        points.append({
-            "t": round(ts),
-            "gen": gen_tps,
-            "prompt": prompt_tps,
-            "proc": proc,
-            "deferred": deferred,
-        })
-    return jsonify({"points": points})
+        }
+        for r in rows
+    ]
