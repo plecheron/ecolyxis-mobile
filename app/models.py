@@ -228,3 +228,25 @@ class GeneratedImage(db.Model):
         if idx < len(self.SIZES) - 1:
             return self.SIZES[idx + 1]
         return None
+
+
+class GeneratedVideo(db.Model):
+    """Tracks generated videos."""
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey("message.id"), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
+    prompt = db.Column(db.Text, nullable=False)
+    seed = db.Column(db.Integer, nullable=False, default=0)
+    width = db.Column(db.Integer, nullable=False, default=480)
+    height = db.Column(db.Integer, nullable=False, default=480)
+    frames = db.Column(db.Integer, nullable=False, default=33)
+    fps = db.Column(db.Integer, nullable=False, default=16)
+    filename = db.Column(db.String(120), nullable=False)
+    duration_s = db.Column(db.Float, nullable=True)
+    model = db.Column(db.String(60), nullable=False, default="wan22-ti2v-5b-q4")
+    parent_image_id = db.Column(db.Integer, db.ForeignKey("generated_image.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", backref=db.backref("generated_videos", lazy=True))
+    parent_image = db.relationship("GeneratedImage", backref=db.backref("animated_videos", lazy=True))

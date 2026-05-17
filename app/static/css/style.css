@@ -1481,3 +1481,13 @@ a:hover {
     color: var(--error, #ef4444);
     font-size: 0.85em;
 }
+
+/* Video Generation */
+.generated-video-wrapper {
+    display: inline-block;
+    max-width: 400px;
+}
+.generated-video-wrapper video {
+    max-width: 100%;
+    border-radius: 8px;
+}

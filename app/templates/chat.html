@@ -77,6 +77,7 @@
                 <option value="long">Long</option>
                 <option value="precise">Precise</option>
                 <option value="image">Image</option>
+                <option value="video">Video</option>
                 {% if rate_info.is_premium %}<option value="vision">Vision</option>{% endif %}
             </select>
             <div class="chat-header-right">
@@ -845,6 +846,101 @@ async function sendMessage(e) {
         } catch (err) {
             removeThinking();
             addMessage("assistant", "\u26a0\ufe0f Image generation failed: " + err.message);
+        }
+        isStreaming = false;
+        sendBtn.disabled = false;
+        scrollToBottom();
+        return;
+    }
+
+    // Video generation mode (SSE streaming with progress)
+    if (selectedMode === 'video') {
+        removeThinking();
+        try {
+            showThinking();
+            var thinkingMsg = document.getElementById("thinking-msg");
+            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
+            if (indicator) {
+                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="vid-progress-fill"></div></div><div class="gen-progress-text"><span id="vid-progress-label">Starting video generation...</span><span id="vid-progress-eta"></span></div></div>';
+            }
+
+            var vidStartTime = performance.now();
+
+            const vidResp = await fetch("/chat/" + threadId + "/generate-video-stream", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: content, width: 480, height: 480, frames: 33 })
+            });
+
+            const vidReader = vidResp.body.getReader();
+            const vidDecoder = new TextDecoder();
+            var vidBuffer = '';
+            var vidDone = false;
+
+            while (!vidDone) {
+                const { done, value } = await vidReader.read();
+                if (done) { vidDone = true; }
+
+                vidBuffer += vidDecoder.decode(value, { stream: true });
+                var vidLines = vidBuffer.split('\n');
+                vidBuffer = vidLines.pop();
+
+                for (var vi = 0; vi < vidLines.length; vi++) {
+                    var vline = vidLines[vi].trim();
+                    if (!vline.startsWith('data: ')) continue;
+                    try {
+                        var vevent = JSON.parse(vline.substring(6));
+                    } catch (e) { continue; }
+
+                    if (vevent.error) {
+                        removeThinking();
+                        addMessage("assistant", "\u26a0\ufe0f " + vevent.error);
+                        vidDone = true;
+                        break;
+                    }
+
+                    var vidFill = document.getElementById('vid-progress-fill');
+                    var vidLabel = document.getElementById('vid-progress-label');
+                    var vidEta = document.getElementById('vid-progress-eta');
+
+                    if (vevent.stage === 'queued') {
+                        if (vidLabel) vidLabel.textContent = 'Queued...';
+                    } else if (vevent.stage === 'encoding') {
+                        if (vidLabel) vidLabel.textContent = 'Encoding prompt...';
+                        if (vidFill) vidFill.style.width = '10%';
+                    } else if (vevent.stage === 'sampling') {
+                        var pct = Math.round(10 + (vevent.step / vevent.total_steps) * 55);
+                        if (vidFill) vidFill.style.width = pct + '%';
+                        if (vidLabel) vidLabel.textContent = 'Generating frames... ' + vevent.step + '/' + vevent.total_steps;
+                        if (vevent.speed_per_step && vidEta) {
+                            var remaining = (vevent.total_steps - vevent.step) * vevent.speed_per_step;
+                            vidEta.textContent = ' ~' + Math.ceil(remaining) + 's remaining';
+                        }
+                    } else if (vevent.stage === 'sampling_done') {
+                        if (vidFill) vidFill.style.width = '70%';
+                        if (vidLabel) vidLabel.textContent = 'Sampling complete, decoding video...';
+                    } else if (vevent.stage === 'vae_decode') {
+                        if (vidFill) vidFill.style.width = '75%';
+                        if (vidLabel) vidLabel.textContent = 'Decoding video tiles...';
+                    } else if (vevent.stage === 'converting') {
+                        if (vidFill) vidFill.style.width = '95%';
+                        if (vidLabel) vidLabel.textContent = 'Converting to MP4...';
+                    } else if (vevent.stage === 'done' && vevent.url) {
+                        removeThinking();
+                        var vidHtml = '<div class="generated-video-wrapper">';
+                        vidHtml += '<video controls autoplay loop playsinline style="max-width:100%;border-radius:8px;">';
+                        vidHtml += '<source src="' + vevent.url + '" type="video/mp4"></video>';
+                        vidHtml += '<div style="font-size:0.75rem;color:var(--text-muted,#8b949e);margin-top:4px;">';
+                        vidHtml += vevent.width + 'x' + vevent.height + ' · ' + vevent.frames + ' frames · ' + vevent.elapsed_s + 's';
+                        vidHtml += '</div></div>';
+                        addMessage("assistant", vidHtml);
+                        vidDone = true;
+                    }
+                }
+            }
+        } catch (err) {
+            removeThinking();
+            addMessage("assistant", "\u26a0\ufe0f Video generation failed: " + err.message);
         }
         isStreaming = false;
         sendBtn.disabled = false;
