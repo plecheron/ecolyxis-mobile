@@ -36,7 +36,7 @@
         <div class="sidebar-footer">
             <span class="user-name">👤 {{ current_user.username }}</span>
             <a href="/contact/" class="btn btn-outline btn-sm">Contact</a>
-            <a href="{{ url_for("auth.logout") }}" class="btn btn-outline btn-sm">Log Out</a>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
         </div>
     </aside>
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -138,7 +138,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const threadId = {{ thread.id }};
+const threadId = '{{ thread.id }}';
 const chatUrl = "/chat/" + threadId + "/message";
 const messagesDiv = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
@@ -721,7 +721,7 @@ async function sendMessage(e) {
             const imgResp = await fetch("/chat/" + threadId + "/generate-image-stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: content, width: 512, height: 512 })
+                body: JSON.stringify({ prompt: content, width: 128, height: 128 })
             });
 
             const reader = imgResp.body.getReader();
@@ -800,17 +800,43 @@ async function sendMessage(e) {
                 removeThinking();
                 var assistantDiv = addMessage("assistant", "");
                 var msgText = assistantDiv.querySelector('.message-text');
+                var imgWrapper = document.createElement('div');
+                imgWrapper.className = 'generated-image-wrapper';
+                imgWrapper.setAttribute('data-image-id', imgData.image_id || '');
+                imgWrapper.setAttribute('data-seed', imgData.seed || '');
+                imgWrapper.setAttribute('data-width', imgData.width || 128);
+                imgWrapper.setAttribute('data-height', imgData.height || 128);
                 var imgEl = document.createElement('img');
                 imgEl.src = imgData.url;
+                imgEl.className = 'generated-image';
                 imgEl.style.maxWidth = '100%';
                 imgEl.style.borderRadius = '8px';
                 imgEl.style.marginTop = '8px';
-                msgText.appendChild(imgEl);
+                imgEl.style.cursor = 'pointer';
+                imgWrapper.appendChild(imgEl);
+                // Upscale button (hidden if at max 512)
+                var btnContainer = document.createElement('div');
+                btnContainer.className = 'upscale-btn-container';
+                var currentSize = imgData.width || 128;
+                var nextSize = currentSize < 512 ? currentSize * 2 : null;
+                if (nextSize) {
+                    var upscaleBtn = document.createElement('button');
+                    upscaleBtn.className = 'btn-upscale';
+                    upscaleBtn.textContent = '⬆ Upscale to ' + nextSize + 'x' + nextSize;
+                    upscaleBtn.onclick = function() { upscaleImage(imgWrapper, threadId); };
+                    btnContainer.appendChild(upscaleBtn);
+                }
+                imgWrapper.appendChild(btnContainer);
+                msgText.appendChild(imgWrapper);
                 // Save the message with image reference
+                var saveData = JSON.stringify([
+                    {type: "text", text: "Generated image: " + content.substring(0, 100)},
+                    {type: "image", file: imgData.filename, name: imgData.filename, image_id: imgData.image_id, seed: imgData.seed, width: imgData.width || 128, height: imgData.height || 128}
+                ]);
                 await fetch("/chat/" + threadId + "/save", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content: JSON.stringify([{type: "text", text: "Generated image: " + content.substring(0, 100)}, {type: "image", file: imgData.filename, name: imgData.filename}]), tokens_used: 0, message_type: "mixed" })
+                    body: JSON.stringify({ content: saveData, tokens_used: 0, message_type: "mixed" })
                 });
             } else if (!imgData || !imgData.error) {
                 removeThinking();
@@ -1283,11 +1309,69 @@ function closeSidebar() {
 
 // Render existing assistant messages as markdown
 document.querySelectorAll(".message-assistant .message-text").forEach(function(el) {
+    // Skip if server already rendered images (render_message filter produced <img> tags)
+    if (el.querySelector('.message-image') || el.querySelector('.generated-image-wrapper')) return;
+    const text = el.textContent.trim();
+    // Check if this is an image generation response (JSON array with image part)
+    if (text.startsWith('[')) {
+        try {
+            const parts = JSON.parse(text);
+            if (Array.isArray(parts) && parts.some(p => p.type === 'image')) {
+                el.innerHTML = '';
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'message-images';
+                parts.forEach(p => {
+                    if (p.type === 'text' && p.text) {
+                        el.appendChild(document.createTextNode(p.text));
+                    } else if (p.type === 'image') {
+                        const imgEl = document.createElement('img');
+                        imgEl.src = p.url || ('/uploads/' + (p.file || p.name));
+                        imgEl.className = 'message-image';
+                        imgEl.style.maxWidth = '100%';
+                        imgEl.style.borderRadius = '8px';
+                        imgEl.style.marginTop = '8px';
+                        imgContainer.appendChild(imgEl);
+                        // Add upscale wrapper if image_id present
+                        if (p.image_id) {
+                            const wrapper = document.createElement('div');
+                            wrapper.className = 'generated-image-wrapper';
+                            wrapper.setAttribute('data-image-id', p.image_id);
+                            wrapper.setAttribute('data-seed', p.seed || '');
+                            wrapper.setAttribute('data-width', p.width || 128);
+                            wrapper.setAttribute('data-height', p.height || 128);
+                            wrapper.appendChild(imgEl);
+                            const btnContainer = document.createElement('div');
+                            btnContainer.className = 'upscale-btn-container';
+                            var currentSize = p.width || 128;
+                            var nextSize = currentSize < 512 ? currentSize * 2 : null;
+                            if (nextSize) {
+                                const upscaleBtn = document.createElement('button');
+                                upscaleBtn.className = 'btn-upscale';
+                                upscaleBtn.textContent = '⬆ Upscale to ' + nextSize + 'x' + nextSize;
+                                upscaleBtn.onclick = function() { upscaleImage(wrapper, threadId); };
+                                btnContainer.appendChild(upscaleBtn);
+                            } else {
+                                btnContainer.innerHTML = '<span class="upscale-max">✓ Max resolution</span>';
+                            }
+                            wrapper.appendChild(btnContainer);
+                            imgContainer.appendChild(wrapper);
+                        }
+                    }
+                });
+                if (imgContainer.children.length > 0) {
+                    el.appendChild(imgContainer);
+                }
+                return;
+            }
+        } catch(e) {}
+    }
     el.innerHTML = renderMd(el.textContent);
 });
 
 // Render images in existing user messages (multimodal JSON content)
 document.querySelectorAll(".message-user .message-text").forEach(function(el) {
+    // Skip if server already rendered images
+    if (el.querySelector('.message-image')) return;
     const text = el.textContent.trim();
     if (!text.startsWith('[')) return;
     try {
@@ -1303,9 +1387,9 @@ document.querySelectorAll(".message-user .message-text").forEach(function(el) {
         parts.forEach(p => {
             if (p.type === 'text' && p.text) {
                 el.appendChild(document.createTextNode(p.text));
-            } else if (p.type === 'image' && p.url) {
+            } else if (p.type === 'image') {
                 const imgEl = document.createElement('img');
-                imgEl.src = p.url;
+                imgEl.src = p.url || ('/uploads/' + (p.file || p.name));
                 imgEl.className = 'message-image';
                 imgContainer.appendChild(imgEl);
             }
@@ -1320,6 +1404,89 @@ updateRegenerateButton();
 highlightExistingMessages();
 updateContextWheel();
 scrollToBottom();
+
+
+// ===== Image Upscale =====
+function upscaleImage(wrapper, threadId) {
+    var imageId = wrapper.getAttribute('data-image-id');
+    var btnContainer = wrapper.querySelector('.upscale-btn-container');
+    if (!imageId || !btnContainer) return;
+
+    // Replace button with progress
+    btnContainer.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="upscale-fill-' + imageId + '" style="width:5%"></div></div><div class="gen-progress-text"><span id="upscale-label-' + imageId + '">Upscaling...</span></div></div>';
+
+    fetch("/chat/" + threadId + "/upscale-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_id: parseInt(imageId) })
+    }).then(function(resp) {
+        var reader = resp.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var upscaledData = null;
+
+        function process() {
+            return reader.read().then(function(result) {
+                if (result.done) {
+                    if (upscaledData && upscaledData.url) {
+                        // Replace image
+                        var oldImg = wrapper.querySelector('img.generated-image');
+                        if (oldImg) {
+                            oldImg.src = upscaledData.url;
+                        }
+                        wrapper.setAttribute('data-image-id', upscaledData.image_id);
+                        wrapper.setAttribute('data-width', upscaledData.width);
+                        wrapper.setAttribute('data-height', upscaledData.height);
+                        // Update upscale button
+                        var nextSize = upscaledData.width < 512 ? upscaledData.width * 2 : null;
+                        if (nextSize) {
+                            btnContainer.innerHTML = '';
+                            var upscaleBtn = document.createElement('button');
+                            upscaleBtn.className = 'btn-upscale';
+                            upscaleBtn.textContent = '⬆ Upscale to ' + nextSize + 'x' + nextSize;
+                            upscaleBtn.onclick = function() { upscaleImage(wrapper, threadId); };
+                            btnContainer.appendChild(upscaleBtn);
+                        } else {
+                            btnContainer.innerHTML = '<span class="upscale-max">✓ Max resolution</span>';
+                        }
+                    }
+                    return;
+                }
+
+                buffer += decoder.decode(result.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        var event = JSON.parse(line.substring(6));
+                    } catch(e) { continue; }
+
+                    if (event.error) {
+                        btnContainer.innerHTML = '<span class="upscale-error">⚠ ' + event.error + '</span>';
+                        return;
+                    }
+                    if (event.stage === 'diffusion') {
+                        var pct = Math.round(5 + (event.step / event.total_steps) * 85);
+                        var fill = document.getElementById('upscale-fill-' + imageId);
+                        var label = document.getElementById('upscale-label-' + imageId);
+                        if (fill) fill.style.width = pct + '%';
+                        if (label) label.textContent = 'Step ' + event.step + '/' + event.total_steps;
+                    }
+                    if (event.stage === 'done') {
+                        upscaledData = event;
+                    }
+                }
+                return process();
+            });
+        }
+        return process();
+    }).catch(function(err) {
+        btnContainer.innerHTML = '<span class="upscale-error">⚠ Failed: ' + err.message + '</span>';
+    });
+}
 
 // ===== Reconnection Logic =====
 let reconnectAttempts = 0;
@@ -1368,7 +1535,7 @@ window.fetch = function(...args) {
 };
 
 // Online/offline detection
-window.addEventListener('offline', () => showReconnectBanner('📡 You're offline — waiting for connection...'));
+        window.addEventListener('offline', () => showReconnectBanner('📡 You are offline — waiting for connection...'));
 window.addEventListener('online', () => hideReconnectBanner());
 </script>
 {% endblock %}

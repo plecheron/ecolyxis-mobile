@@ -97,7 +97,7 @@ def create_thread():
     return resp
 
 
-@dash_bp.route("/threads/<int:thread_id>", methods=["DELETE"])
+@dash_bp.route("/threads/<string:thread_id>", methods=["DELETE"])
 @login_required
 def delete_thread(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()

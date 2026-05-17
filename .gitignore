@@ -9,3 +9,4 @@ uploads/
 *.db
 *.sqlite
 config.real.py
+config.py.real

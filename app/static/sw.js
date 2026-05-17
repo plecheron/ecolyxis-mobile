@@ -1,7 +1,9 @@
-const CACHE_NAME = 'ecolyxis-v2';
+const CACHE_NAME = 'ecolyxis-v6';
 const STATIC_ASSETS = [
     '/static/css/style.css',
     '/static/manifest.json',
+    '/static/js/dashboard.js',
+    '/static/js/webauthn.js',
 ];
 
 self.addEventListener('install', event => {

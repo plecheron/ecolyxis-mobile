@@ -79,8 +79,26 @@ def create_app():
                     elif p.get("type") == "image":
                         fname = p.get("file", p.get("url", ""))
                         name = p.get("name", fname)
+                        img_id = p.get("image_id", "")
+                        seed = p.get("seed", "")
+                        w = p.get("width", 128)
+                        h = p.get("height", 128)
                         if fname and not fname.startswith("data:"):
-                            html_parts.append('<div class="message-images"><img src="/uploads/' + str(markupsafe.escape(fname)) + '" class="message-image" alt="' + str(markupsafe.escape(name)) + '" loading="lazy"></div>')
+                            next_size = w * 2 if w < 512 else None
+                            wrapper_start = '<div class="generated-image-wrapper"'
+                            if img_id:
+                                wrapper_start += f' data-image-id="{markupsafe.escape(str(img_id))}"'
+                                wrapper_start += f' data-seed="{markupsafe.escape(str(seed))}"'
+                                wrapper_start += f' data-width="{w}" data-height="{h}"'
+                            wrapper_start += '>'
+                            img_tag = f'<img src="/uploads/{markupsafe.escape(fname)}" class="message-image generated-image" alt="{markupsafe.escape(name)}" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px;">'
+                            btn_html = ""
+                            if img_id and next_size:
+                                btn_html = f'<div class="upscale-btn-container"><button class="btn-upscale" onclick="upscaleImage(this.closest(\'.generated-image-wrapper\'), threadId)">⬆ Upscale to {next_size}x{next_size}</button></div>'
+                            elif img_id and not next_size:
+                                btn_html = '<div class="upscale-btn-container"><span class="upscale-max">✓ Max resolution</span></div>'
+                            wrapper_end = '</div>'
+                            html_parts.append(wrapper_start + img_tag + btn_html + wrapper_end)
                         elif p.get("url", "").startswith("data:"):
                             html_parts.append('<div class="message-images"><img src="' + str(markupsafe.escape(p["url"][:50])) + '..." class="message-image" alt="image"></div>')
                 return markupsafe.Markup("".join(html_parts))

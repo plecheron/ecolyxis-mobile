@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 from app import db, login_manager
 from flask_login import UserMixin
@@ -43,7 +44,7 @@ class User(UserMixin, db.Model):
 
 
 class Thread(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     title = db.Column(db.String(200), default="New Chat")
     system_prompt = db.Column(db.Text, nullable=True)  # Custom system prompt (premium)
@@ -60,7 +61,7 @@ class Thread(db.Model):
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    thread_id = db.Column(db.Integer, db.ForeignKey("thread.id"), nullable=False)
+    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # "user" or "assistant"
     content = db.Column(db.Text, nullable=False)
     tokens_used = db.Column(db.Integer, nullable=True)
@@ -200,3 +201,30 @@ class LLMQueueEntry(db.Model):
     __table_args__ = (
         db.Index("idx_queue_status", "status", "is_premium", "created_at"),
     )
+
+
+class GeneratedImage(db.Model):
+    """Tracks generated images with seed/resolution for upscaling."""
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey("message.id"), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
+    prompt = db.Column(db.Text, nullable=False)
+    seed = db.Column(db.Integer, nullable=False)
+    width = db.Column(db.Integer, nullable=False)
+    height = db.Column(db.Integer, nullable=False)
+    filename = db.Column(db.String(120), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey("generated_image.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", backref=db.backref("generated_images", lazy=True))
+    parent = db.relationship("GeneratedImage", remote_side=[id], backref="upscaled_versions")
+
+    SIZES = [128, 256, 512]
+
+    def next_size(self):
+        """Return the next upscale size, or None if already at max."""
+        idx = self.SIZES.index(self.width) if self.width in self.SIZES else -1
+        if idx < len(self.SIZES) - 1:
+            return self.SIZES[idx + 1]
+        return None
