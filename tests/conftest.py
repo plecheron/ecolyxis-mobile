@@ -67,3 +67,28 @@ def db(app):
         _db.create_all()
         yield _db
         _db.session.remove()
+
+
+@pytest.fixture
+def make_user(app, db):
+    """Factory that creates a User in the test DB."""
+    from app.models import User
+
+    def _make(email="test@example.com", password="password123", **kwargs):
+        u = User(email=email, username=kwargs.pop("username", email), **kwargs)
+        u.set_password(password)
+        _db.session.add(u)
+        _db.session.commit()
+        return u
+
+    return _make
+
+
+@pytest.fixture
+def login_as(client):
+    """Log a user in via Flask-Login's session."""
+    def _login(user):
+        with client.session_transaction() as sess:
+            sess["_user_id"] = str(user.id)
+            sess["_fresh"] = True
+    return _login
