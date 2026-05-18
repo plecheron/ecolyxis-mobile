@@ -100,7 +100,7 @@ def authenticate_api(f):
         if not api_key:
             return jsonify({"error": {"message": "Invalid or revoked API key", "type": "auth_error"}}), 401
 
-        user = User.query.get(api_key.user_id)
+        user = db.session.get(User, api_key.user_id)
         if not user:
             return jsonify({"error": {"message": "User not found", "type": "auth_error"}}), 401
 

@@ -176,7 +176,7 @@ def _sync_response(llm_url, payload, completion_id, created, model, api_key, wal
     _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, prompt_tokens, completion_tokens)
 
     with app.app_context():
-        wallet = Wallet.query.get(wallet_id)
+        wallet = db.session.get(Wallet, wallet_id)
         headers = _rate_headers(api_key, wallet)
 
     result = jsonify({
@@ -283,7 +283,7 @@ def _stream_response(llm_url, payload, completion_id, created, model, api_key, w
 
         _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, total_prompt, total_completion)
 
-    wallet = Wallet.query.get(wallet_id)
+    wallet = db.session.get(Wallet, wallet_id)
     headers = _rate_headers(api_key, wallet)
     headers["X-Accel-Buffering"] = "no"
     headers["Cache-Control"] = "no-cache"

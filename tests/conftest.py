@@ -35,6 +35,11 @@ def app():
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{_TEST_DB_PATH}",
         "WTF_CSRF_ENABLED": False,
     })
+
+    # Production schema is owned by Flask-Migrate; tests use create_all instead.
+    with app.app_context():
+        _db.create_all()
+
     yield app
     try:
         os.unlink(_TEST_DB_PATH)

@@ -151,7 +151,7 @@ def webauthn_authenticate_finish():
     if not stored_cred:
         return jsonify({"error": "Unknown credential"}), 404
 
-    user = User.query.get(stored_cred.user_id)
+    user = db.session.get(User, stored_cred.user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
 

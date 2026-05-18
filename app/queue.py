@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 def init_queue():
-    """Create queue table if not exists."""
-    db.create_all()
-    logger.info("Queue table initialized")
+    """No-op marker for app startup. Schema is owned by Flask-Migrate now."""
+    logger.info("Queue subsystem initialized")
 
 
 def enter_queue(user_id, is_premium, timeout=90, _app=None):

@@ -115,7 +115,6 @@ def create_app(test_config=None):
             except (_json.JSONDecodeError, KeyError, TypeError):
                 return markupsafe.Markup.escape(text)
         app.jinja_env.filters["render_message"] = render_message
-        db.create_all()
         from app.queue import init_queue
         init_queue()
 

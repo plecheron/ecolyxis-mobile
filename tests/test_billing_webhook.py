@@ -84,7 +84,7 @@ def test_checkout_completed_upgrades_user_to_premium(client, db, make_user):
     resp = _post_event(client, event)
     assert resp.status_code == 200
     db.session.expire_all()
-    fresh = User.query.get(user_id)
+    fresh = db.session.get(User, user_id)
     assert fresh.tier == "premium"
     assert fresh.subscription_status == "active"
     assert fresh.stripe_subscription_id == "sub_abc"

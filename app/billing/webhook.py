@@ -62,7 +62,7 @@ def _handle_checkout_completed(session_obj):
         customer_id = _sd(session_obj, "customer")
         user = User.query.filter_by(stripe_customer_id=customer_id).first()
     else:
-        user = User.query.get(int(user_id))
+        user = db.session.get(User, int(user_id))
 
     if not user:
         return
@@ -85,7 +85,7 @@ def _handle_credit_topup(session_obj, metadata):
     if not user_id or not credit_amount_pence:
         return
 
-    user = User.query.get(int(user_id))
+    user = db.session.get(User, int(user_id))
     if not user:
         return
 
