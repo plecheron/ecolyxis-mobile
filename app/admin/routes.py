@@ -16,6 +16,7 @@ from app.admin.metrics import (
     _user_chart_data,
     _top_users,
 )
+from app.admin.tests import get_last_run as _get_last_test_run
 
 
 @admin_bp.route("/")
@@ -43,6 +44,7 @@ def index():
         token_chart=_token_chart_data(30),
         user_chart=_user_chart_data(30),
         top_users=_top_users(20),
+        test_run=_get_last_test_run(),
         now=datetime.now(timezone.utc),
     )
 

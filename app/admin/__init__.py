@@ -97,4 +97,4 @@ _metrics_sampler = _MetricsSampler()
 _metrics_sampler.start()
 
 
-from app.admin import metrics, routes  # noqa: E402,F401 — register routes
+from app.admin import metrics, routes, tests  # noqa: E402,F401 — register routes

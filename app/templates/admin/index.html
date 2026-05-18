@@ -26,6 +26,9 @@
       <li><a href="#section-services" class="sidebar-link" data-section="section-services">
         <span class="sidebar-icon">🔧</span> Services
       </a></li>
+      <li><a href="#section-tests" class="sidebar-link" data-section="section-tests">
+        <span class="sidebar-icon">🧪</span> Tests
+      </a></li>
       <li><a href="#section-ecolyxis" class="sidebar-link" data-section="section-ecolyxis">
         <span class="sidebar-icon">🌿</span> Ecolyxis Stats
       </a></li>
@@ -197,6 +200,60 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- Test Suite -->
+    <section class="admin-section" id="section-tests">
+      <h2>Test Suite</h2>
+      <div class="admin-grid admin-grid-4" style="margin-bottom:12px">
+        <div class="stat-card">
+          <div class="stat-label">Status</div>
+          <div class="stat-value">
+            {% if test_run %}
+              {% if test_run.passed %}<span style="color:#27ae60">✓ Pass</span>
+              {% else %}<span style="color:#e74c3c">✗ Fail</span>{% endif %}
+            {% else %}<span style="color:#888">—</span>{% endif %}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Passed</div>
+          <div class="stat-value" style="color:#27ae60">{{ test_run.summary.passed if test_run else 0 }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Failed</div>
+          <div class="stat-value" style="color:#e74c3c">{{ test_run.summary.failed if test_run else 0 }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Last run</div>
+          <div class="stat-value" style="font-size:.9rem">
+            {% if test_run %}
+              {{ test_run.timestamp[:19].replace('T',' ') }} UTC<br>
+              <span style="opacity:.6">{{ test_run.wall_time_s }}s</span>
+            {% else %}never{% endif %}
+          </div>
+        </div>
+      </div>
+      <button id="run-tests-btn" class="btn btn-primary">▶ Run all tests</button>
+      <div id="run-tests-status" style="margin-top:10px;color:#888;font-size:.9rem"></div>
+
+      {% if test_run and test_run.failures %}
+      <div class="stat-card" style="margin-top:16px;border-left:4px solid #e74c3c">
+        <h3 style="margin:0 0 10px;color:#e74c3c">Failures ({{ test_run.failures|length }})</h3>
+        {% for f in test_run.failures %}
+        <div style="margin-bottom:8px;font-family:monospace;font-size:.85rem">
+          <code>{{ f.test }}</code><br>
+          <span style="opacity:.7">{{ f.message }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if test_run %}
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:#888;font-size:.9rem">Output (tail)</summary>
+        <pre style="background:#0d0d1a;padding:10px;border-radius:6px;overflow:auto;max-height:400px;font-size:.75rem;color:#ddd;margin-top:8px">{{ test_run.stdout_tail }}</pre>
+      </details>
+      {% endif %}
     </section>
 
     <!-- Ecolyxis Stats -->
@@ -749,5 +806,23 @@ document.addEventListener('click', (e) => {
 function refreshAll() {
   location.reload();
 }
+
+// ── Run test suite ───────────────────────────────────────────────
+document.getElementById('run-tests-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('run-tests-btn');
+  const status = document.getElementById('run-tests-status');
+  btn.disabled = true;
+  btn.textContent = 'Running tests…';
+  status.textContent = 'pytest is running (typically ~5 seconds)…';
+  try {
+    const r = await fetch('/admin/tests/run', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    location.reload();
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '▶ Run all tests';
+  }
+});
 </script>
 {% endblock %}
