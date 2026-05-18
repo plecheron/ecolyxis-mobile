@@ -15,10 +15,8 @@ from app.admin import admin_bp, admin_required
 
 PROJECT_ROOT = "/opt/Ecolyxis"
 PYTEST_BIN = f"{PROJECT_ROOT}/venv/bin/pytest"
-PYTEST_TIMEOUT = 120  # seconds — tests normally finish in ~5s
+PYTEST_TIMEOUT = 120
 
-# Parses pytest's final summary line. Captures groups are optional because
-# pytest only includes sections that actually occurred.
 _SUMMARY_RE = re.compile(
     r"=+ "
     r"(?:(\d+) failed,? ?)?"
@@ -30,18 +28,21 @@ _SUMMARY_RE = re.compile(
     r"(?:(\d+) warnings? )?"
     r"in ([\d.]+)s"
 )
+
+_TEST_LINE_RE = re.compile(
+    r"^(tests/\S+?)::(\S+) (PASSED|FAILED|SKIPPED|XFAILED|XPASS(?:ED)?)(?: .*)?$",
+    re.MULTILINE,
+)
 _FAILED_RE = re.compile(r"^FAILED (\S+)(?: - (.+))?$", re.MULTILINE)
 
-_last_run = None  # populated by run_tests; read by routes.index for the template
+_last_run = None
 
 
 def get_last_run():
-    """Return the most recent test-run dict, or None if no run has happened."""
     return _last_run
 
 
 def _parse_pytest_output(stdout):
-    """Extract a summary dict and a list of failures from pytest -v output."""
     summary = {
         "passed": 0, "failed": 0, "skipped": 0,
         "xfailed": 0, "xpassed": 0, "errors": 0,
@@ -56,18 +57,36 @@ def _parse_pytest_output(stdout):
         summary["xpassed"] = int(m.group(5) or 0)
         summary["errors"] = int(m.group(6) or 0)
         summary["duration"] = float(m.group(8))
+
     failures = [
         {"test": fm.group(1), "message": (fm.group(2) or "").strip()}
         for fm in _FAILED_RE.finditer(stdout)
     ]
-    return summary, failures
+
+    suites = {}
+    for tm in _TEST_LINE_RE.finditer(stdout):
+        file_path = tm.group(1)
+        test_name = tm.group(2)
+        status = tm.group(3)
+        if status.startswith("XPASS"):
+            status = "xpassed"
+        else:
+            status = status.lower()
+
+        parts = file_path.replace("tests/", "").split("/")
+        suite = parts[0] if len(parts) > 1 else "root"
+
+        if suite not in suites:
+            suites[suite] = {"file": file_path, "tests": []}
+        suites[suite]["tests"].append({"name": test_name, "status": status})
+
+    return summary, failures, suites
 
 
 @admin_bp.route("/tests/run", methods=["POST"])
 @login_required
 @admin_required
 def run_tests():
-    """Run the pytest suite and return parsed results as JSON."""
     global _last_run
     started = time.time()
     try:
@@ -79,13 +98,14 @@ def run_tests():
             timeout=PYTEST_TIMEOUT,
         )
         elapsed = time.time() - started
-        summary, failures = _parse_pytest_output(proc.stdout)
+        summary, failures, suites = _parse_pytest_output(proc.stdout)
         _last_run = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "exit_code": proc.returncode,
             "passed": proc.returncode == 0,
             "summary": summary,
             "failures": failures,
+            "suites": suites,
             "stdout_tail": proc.stdout[-8000:],
             "stderr_tail": proc.stderr[-2000:],
             "wall_time_s": round(elapsed, 2),
@@ -97,6 +117,7 @@ def run_tests():
             "passed": False,
             "summary": {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errors": 0, "duration": 0.0},
             "failures": [],
+            "suites": {},
             "stdout_tail": "",
             "stderr_tail": f"Test run timed out after {PYTEST_TIMEOUT}s",
             "wall_time_s": PYTEST_TIMEOUT,
@@ -108,6 +129,7 @@ def run_tests():
             "passed": False,
             "summary": {"passed": 0, "failed": 0, "skipped": 0, "xfailed": 0, "xpassed": 0, "errors": 0, "duration": 0.0},
             "failures": [],
+            "suites": {},
             "stdout_tail": "",
             "stderr_tail": f"pytest not found at {PYTEST_BIN}. Install requirements-dev.txt.",
             "wall_time_s": round(time.time() - started, 2),

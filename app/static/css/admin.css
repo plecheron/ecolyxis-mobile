@@ -1,6 +1,14 @@
 /* ── Admin Dashboard — Redesigned ─────────────────────────────────── */
 
+
 /* Layout */
+
+/* Admin pages need scrolling — override chat-layout overflow lock */
+body.admin-page {
+    height: auto !important;
+    overflow: auto !important;
+}
+
 .admin-layout {
   display: flex;
   min-height: 100vh;

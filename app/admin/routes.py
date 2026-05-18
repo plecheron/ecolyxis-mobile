@@ -125,3 +125,14 @@ def api_llm_history():
             "deferred": deferred,
         })
     return jsonify({"points": points})
+
+
+@admin_bp.route("/tests")
+@login_required
+@admin_required
+def tests_page():
+    """Dedicated test suite page."""
+    return render_template(
+        "admin/tests.html",
+        test_run=_get_last_test_run(),
+    )
