@@ -14,7 +14,7 @@ Ecolyxis is a **sustainable AI chat platform** — a web-based LLM chatbot servi
 | Reverse Proxy | Caddy (HTTP :80 → Gunicorn :8000) |
 | Database | PostgreSQL 17 (via PgBouncer on 10.0.0.4:6432) |
 | LLM | Qwen 3.6-35B-A3B (Q4_0) via LM Studio OpenAI-compatible API |
-| Vision | HiDream model at 10.0.0.1:8083 |
+| Image Gen | Z-Image Turbo (6B) on host01, tunnelled to 10.0.0.1:8083 |
 | Payments | Stripe (live mode) — subscriptions + credit top-ups |
 | Frontend | Jinja2 templates + HTMX + SSE streaming |
 | PWA | Service worker + manifest.json |
@@ -43,7 +43,7 @@ Internet → VPS (77.68.76.216) → WireGuard → Caddy :80 → Gunicorn :8000 �
 
 - User signup/login with password hashing + WebAuthn passkeys
 - Multi-thread chat interface with SSE streaming
-- Image upload and vision analysis (HiDream model)
+- Image upload and AI image generation (Z-Image Turbo)
 - Free tier with rate limiting (5 messages/hour)
 - Premium subscriptions via Stripe
 - Credit-based wallet system (top-ups)
@@ -61,7 +61,7 @@ Internet → VPS (77.68.76.216) → WireGuard → Caddy :80 → Gunicorn :8000 �
 | ecolyxis_web1 | 192.168.122.162 | Flask app (this server) |
 | ecolyxis_web2 | 192.168.122.221 | Secondary web server |
 | ecolyxis_db1 | 192.168.122.163 | PostgreSQL + PgBouncer |
-| host01 (LM Studio) | 10.0.0.1 | LLM inference (Qwen + HiDream) |
+| host01 (GPU server) | 10.0.0.1 | LLM inference (Qwen) + Z-Image Turbo image gen |
 | VPS | 77.68.76.216 | Public gateway / WireGuard entry |
 
 ## File Structure
@@ -97,4 +97,4 @@ Internet → VPS (77.68.76.216) → WireGuard → Caddy :80 → Gunicorn :8000 �
 
 ## Last Updated
 
-2026-05-14
+2026-05-19
