@@ -448,7 +448,7 @@
   .admin-sidebar.open { transform: translateX(0); }
 
   .admin-layout { overflow-x: hidden; max-width: 100vw; }
-  .admin-main { margin-left: 0; padding: 0 12px 40px; max-width: 100%; box-sizing: border-box; }
+  .admin-main { margin-left: 0; padding: 0 12px 40px; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
 
   /* Summary: 3-column grid that wraps */
   .test-summary-bar {
@@ -486,12 +486,60 @@
   .output-log { font-size: .7rem; padding: 10px 12px; }
   .failure-card { padding: 10px 12px; }
 }
+
+/* Sidebar overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99;
+}
+.sidebar-overlay.active {
+  display: block;
+}
 </style>
 
 <script>
 function toggleSidebar() {
   document.getElementById('adminSidebar').classList.toggle('open');
 }
+
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', (e) => {
+  const sidebar = document.getElementById('adminSidebar');
+  const toggle = document.getElementById('sidebarToggle');
+  if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !toggle.contains(e.target)) {
+    sidebar.classList.remove('open');
+  }
+});
+
+// Close sidebar when a nav link is clicked on mobile
+document.querySelectorAll('.sidebar-link').forEach(link => {
+  link.addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      document.getElementById('adminSidebar').classList.remove('open');
+    }
+  });
+});
+
+// Also add an overlay behind the sidebar on mobile
+(function() {
+  const overlay = document.createElement('div');
+  overlay.className = 'sidebar-overlay';
+  overlay.addEventListener('click', () => {
+    document.getElementById('adminSidebar').classList.remove('open');
+    overlay.classList.remove('active');
+  });
+  document.body.appendChild(overlay);
+
+  const orig = window.toggleSidebar;
+  window.toggleSidebar = function() {
+    const sb = document.getElementById('adminSidebar');
+    sb.classList.toggle('open');
+    overlay.classList.toggle('active', sb.classList.contains('open'));
+  };
+})();
 
 document.getElementById('run-tests-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('run-tests-btn');

@@ -667,7 +667,7 @@ a:hover {
 /* Thread Grid */
 .thread-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 16px;
 }
 .thread-card {
@@ -691,10 +691,15 @@ a:hover {
 .thread-card h3 {
     font-size: 1rem;
     margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .thread-card-meta {
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px;
     font-size: 0.75rem;
     color: var(--text-muted);
 }

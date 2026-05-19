@@ -738,9 +738,21 @@ sidebarLinks.forEach(link => {
 });
 
 // ── Sidebar Toggle (mobile) ──────────────────────────────────────
-function toggleSidebar() {
-  document.getElementById('adminSidebar').classList.toggle('open');
-}
+(function() {
+  const overlay = document.createElement('div');
+  overlay.className = 'sidebar-overlay';
+  overlay.addEventListener('click', () => {
+    document.getElementById('adminSidebar').classList.remove('open');
+    overlay.classList.remove('active');
+  });
+  document.body.appendChild(overlay);
+
+  window.toggleSidebar = function() {
+    const sb = document.getElementById('adminSidebar');
+    sb.classList.toggle('open');
+    overlay.classList.toggle('active', sb.classList.contains('open'));
+  };
+})();
 
 // Close sidebar when clicking outside on mobile
 document.addEventListener('click', (e) => {
@@ -751,16 +763,19 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Close sidebar when a nav link is clicked on mobile
+document.querySelectorAll('.sidebar-link').forEach(link => {
+  link.addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      document.getElementById('adminSidebar').classList.remove('open');
+      document.querySelector('.sidebar-overlay')?.classList.remove('active');
+    }
+  });
+});
+
 // ── Manual refresh ───────────────────────────────────────────────
 function refreshAll() {
   location.reload();
 }
-
- catch (e) {
-    status.textContent = 'Error: ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '▶ Run all tests';
-  }
-});
 </script>
 {% endblock %}

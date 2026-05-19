@@ -37,7 +37,13 @@ def generate_video_stream(thread_id):
     height = int(data.get("height", 480))
     frames = int(data.get("frames", 33))
 
-    wan22_url = current_app.config.get("WAN22_URL", "http://10.0.0.1:8085")
+    wan22_url = current_app.config.get("WAN22_URL")
+    if not wan22_url:
+        def _err():
+            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "
+
+"
+        return Response(_err(), mimetype="text/event-stream")
     gen_url = f"{wan22_url}/generate-stream"
 
     _ensure_upload_dir()
@@ -126,7 +132,13 @@ def animate_image(thread_id):
     if not os.path.exists(image_path):
         return {"error": "Image not found"}, 404
 
-    wan22_url = current_app.config.get("WAN22_URL", "http://10.0.0.1:8085")
+    wan22_url = current_app.config.get("WAN22_URL")
+    if not wan22_url:
+        def _err():
+            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "
+
+"
+        return Response(_err(), mimetype="text/event-stream")
     gen_url = f"{wan22_url}/animate"
 
     _ensure_upload_dir()

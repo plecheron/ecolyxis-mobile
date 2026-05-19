@@ -73,7 +73,6 @@
             <select class="model-select" id="model-select" style="background:var(--bg-secondary,#161b22);color:var(--text-muted,#8b949e);border:1px solid var(--border,#30363d);border-radius:6px;padding:4px 8px;font-size:0.8rem;cursor:pointer;">
                 <option value="quick">Quick</option>
                 <option value="standard">Standard</option>
-                <option value="dual">Dual GPU</option>
                 <option value="long">Long</option>
                 <option value="precise">Precise</option>
                 <option value="image">Image</option>
@@ -225,7 +224,7 @@ function highlightExistingMessages() {
     });
 }
 
-var MODE_MAX_CTX = {quick: 65536, standard: 65536, dual: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536};
+var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536};
 
 function getSelectedMode() { return document.getElementById('model-select').value; }
 
@@ -426,6 +425,7 @@ async function progressiveCompact() {
     let promptTokens = 0;
     let completionTokens = 0;
     let startTime = performance.now();
+    let serverSaved = false;
 
     try {
         const resp = await fetch('/chat/' + threadId + '/compact/progressive', {
@@ -481,6 +481,7 @@ async function progressiveCompact() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
+                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -506,8 +507,8 @@ async function progressiveCompact() {
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
     }
 
-    // Persist
-    if (fullResponse) {
+    // Persist (only if server didn't already save)
+    if (fullResponse && !serverSaved) {
         const totalTokens = promptTokens + completionTokens;
         try {
             await fetch('/chat/' + threadId + '/compact/save', {
@@ -552,6 +553,7 @@ async function compactConversation() {
     let completionTokens = 0;
     let startTime = performance.now();
     let firstTokenTime = null;
+    let serverSaved = false;
 
     try {
         const resp = await fetch('/chat/' + threadId + '/compact', {
@@ -601,6 +603,7 @@ async function compactConversation() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
+                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -636,8 +639,8 @@ async function compactConversation() {
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
     }
 
-    // Persist the compaction to the DB
-    if (fullResponse) {
+    // Persist the compaction to the DB (only if server didn't already save)
+    if (fullResponse && !serverSaved) {
         const totalTokens = promptTokens + completionTokens;
         try {
             await fetch('/chat/' + threadId + '/compact/save', {
