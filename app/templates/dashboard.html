@@ -119,7 +119,7 @@
                 {% for t in threads %}
                 <div class="thread-card" id="thread-{{ t.id }}">
                     <a href="{{ url_for('chat.view', thread_id=t.id) }}">
-                        <h3>{{ t.title }}</h3>
+                        <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">{{ t.title }}</h3>
                         <div class="thread-card-meta">
                             <span>{{ msg_counts.get(t.id, 0) }} messages</span>
                             <span>{{ t.updated_at.strftime('%d %B %Y, %H:%M') }}</span>

@@ -509,6 +509,81 @@ def compact_save(thread_id):
     return {"status": "ok"}
 
 
+@chat_bp.route("/chat/<string:thread_id>/generate-title", methods=["POST"])
+@login_required
+def generate_title(thread_id):
+    """Auto-generate a thread title from the first user message using the LLM.
+    Called async from frontend after the first message exchange in a new thread."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+
+    # Only generate if still has default title
+    if thread.title != "New Chat":
+        return {"title": thread.title}
+
+    first_msg = (
+        Message.query.filter_by(thread_id=thread.id, role="user")
+        .order_by(Message.created_at)
+        .first()
+    )
+    if not first_msg:
+        return {"title": thread.title}
+
+    # Extract plain text from message content (strip JSON image parts)
+    raw = first_msg.content
+    try:
+        parts = json.loads(raw)
+        if isinstance(parts, list):
+            text = " ".join(p.get("text", "") for p in parts if p.get("type") == "text")
+        else:
+            text = raw
+    except (json.JSONDecodeError, TypeError):
+        text = raw
+
+    if not text.strip():
+        return {"title": thread.title}
+
+    try:
+        client = get_client()
+        title_messages = [
+            {"role": "system", "content": "Generate a very short title (3-6 words) for a conversation that starts with this message. Output ONLY the title, nothing else. No quotes."},
+            {"role": "user", "content": text[:500]},
+        ]
+        title_text = ""
+        for chunk in client.stream_chat(title_messages, mode="quick"):
+            if isinstance(chunk, str):
+                title_text += chunk
+
+        title_text = title_text.strip().strip('"').strip("'")
+        if title_text and len(title_text) <= 100:
+            thread.title = title_text
+        else:
+            # Fallback: truncate first message
+            thread.title = text[:50] + ("..." if len(text) > 50 else "")
+        db.session.commit()
+    except Exception:
+        # Fallback on error
+        thread.title = text[:50] + ("..." if len(text) > 50 else "")
+        db.session.commit()
+
+    return {"title": thread.title}
+
+
+@chat_bp.route("/chat/<string:thread_id>/rename", methods=["PATCH"])
+@login_required
+def rename_thread(thread_id):
+    """Rename a thread. Users can override auto-generated titles."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    data = request.get_json()
+    new_title = (data.get("title") or "").strip()[:200]
+
+    if not new_title:
+        return {"error": "Title cannot be empty"}, 400
+
+    thread.title = new_title
+    db.session.commit()
+    return {"status": "ok", "title": thread.title}
+
+
 @chat_bp.route("/chat/<string:thread_id>/system-prompt", methods=["POST"])
 @login_required
 def update_system_prompt(thread_id):
