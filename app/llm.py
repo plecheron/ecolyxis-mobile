@@ -40,7 +40,15 @@ class LLMClient:
         thinking_active = False
         try:
             resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                error_body = ""
+                try:
+                    error_body = resp.text[:500]
+                except Exception:
+                    pass
+                logger.error("LLM backend returned %d: %s", resp.status_code, error_body)
+                yield f"\n\n⚠️ LLM backend error (HTTP {resp.status_code}). Please try again."
+                return
             for raw_line in resp.iter_lines():
                 if not raw_line:
                     continue
@@ -75,7 +83,7 @@ class LLMClient:
                         yield content
                 except json.JSONDecodeError:
                     continue
-        except requests.RequestException as e:
+        except (requests.RequestException, requests.ConnectionError) as e:
             logger.error("LLM backend error: %s", e)
             yield f"\n\n⚠️ Error contacting LLM: {e}"
 

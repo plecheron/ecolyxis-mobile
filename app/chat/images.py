@@ -33,7 +33,9 @@ def generate_image_endpoint(thread_id):
     width = data.get("width", 128)
     height = data.get("height", 128)
 
-    hidream_url = current_app.config["HIDREAM_URL"]
+    hidream_url = current_app.config.get("HIDREAM_URL")
+    if not hidream_url:
+        return {"error": "Image generation is not configured on this server."}, 503
     try:
         resp = req_lib.post(
             f"{hidream_url}/generate",
@@ -91,7 +93,7 @@ def generate_image_stream(thread_id):
     width = data.get("width", 128)
     height = data.get("height", 128)
 
-    hidream_url = current_app.config["HIDREAM_URL"]
+    hidream_url = current_app.config.get("HIDREAM_URL")
     gen_url = f"{hidream_url}/generate-stream"
 
     _ensure_upload_dir()
@@ -174,7 +176,7 @@ def upscale_image(thread_id):
     if next_size is None:
         return {"error": "Already at maximum size (512x512)"}, 400
 
-    hidream_url = current_app.config["HIDREAM_URL"]
+    hidream_url = current_app.config.get("HIDREAM_URL")
     gen_url = f"{hidream_url}/generate-stream"
 
     _ensure_upload_dir()

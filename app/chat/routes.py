@@ -6,7 +6,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import render_template, request, Response, current_app, send_from_directory, abort
 from flask_login import login_required, current_user
 
@@ -230,7 +230,8 @@ def regenerate(thread_id):
 @chat_bp.route("/chat/<string:thread_id>/compact", methods=["POST"])
 @login_required
 def compact_thread(thread_id):
-    """Compact the entire conversation by summarizing it through the LLM."""
+    """Compact the entire conversation by summarizing it through the LLM.
+    Server-side: generates summary and persists it automatically."""
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
 
     all_messages = (
@@ -260,6 +261,8 @@ def compact_thread(thread_id):
         role_label = "User" if m.role == "user" else "Assistant"
         conversation_text += f"{role_label}: {m.content}\n\n"
 
+    msg_count = len(all_messages)
+
     summary_prompt = (
         "You are summarising a conversation. Produce a detailed but concise summary "
         "that captures all key topics discussed, decisions made, conclusions reached, "
@@ -273,16 +276,65 @@ def compact_thread(thread_id):
         {"role": "user", "content": f"Summarise this conversation:\n\n{conversation_text}"},
     ]
 
-    return _sse(_stream_llm(
-        client, summary_messages, "long", current_user.id, current_user.is_premium,
-        current_app._get_current_object(), show_thinking=False, compacted=True,
-    ))
+    _app = current_app._get_current_object()
+    _thread_id = thread.id
+    _user_id = current_user.id
+
+    def _stream_and_save():
+        summary_text = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+        queue_id = enter_queue(_user_id, current_user.is_premium, _app=_app)
+        if queue_id is None:
+            yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
+            return
+        try:
+            for chunk in client.stream_chat(summary_messages, mode="long"):
+                if isinstance(chunk, dict):
+                    if "thinking_start" in chunk:
+                        yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_end" in chunk:
+                        yield f"data: {json.dumps({'thinking_end': True})}\n\n"
+                    else:
+                        prompt_tokens = chunk.get("prompt_tokens", 0)
+                        completion_tokens = chunk.get("completion_tokens", 0)
+                else:
+                    summary_text += chunk
+                    yield f"data: {json.dumps({'content': chunk, 'compacted': True}, ensure_ascii=False)}\n\n"
+
+            # Server-side save — no client confirmation needed
+            with _app.app_context():
+                Message.query.filter_by(thread_id=_thread_id).delete()
+                user_summary = Message(
+                    thread_id=_thread_id,
+                    role="user",
+                    content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:",
+                )
+                db.session.add(user_summary)
+                assistant_summary = Message(
+                    thread_id=_thread_id,
+                    role="assistant",
+                    content=summary_text,
+                    tokens_used=completion_tokens,
+                )
+                db.session.add(assistant_summary)
+                db.session.commit()
+
+            yield f"data: {json.dumps({'done': True, 'full_response': summary_text, 'compacted': True, 'compact_saved': True, 'msg_count': msg_count, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            leave_queue(queue_id, _app=_app)
+
+    return Response(_stream_and_save(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @chat_bp.route("/chat/<string:thread_id>/compact/progressive", methods=["POST"])
 @login_required
 def compact_progressive(thread_id):
-    """Progressive compact: summarise the oldest 50% of messages, keep recent ones."""
+    """Progressive compact: summarise the oldest 50% of messages, keep recent ones.
+    Server-side: generates summary and persists it automatically."""
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
 
     all_messages = (
@@ -312,6 +364,8 @@ def compact_progressive(thread_id):
         role_label = "User" if m.role == "user" else "Assistant"
         conversation_text += f"{role_label}: {m.content}\n\n"
 
+    msg_count = len(old_messages)
+
     summary_prompt = (
         "You are summarising the first half of a conversation. Produce a detailed but concise summary "
         "that captures all key topics discussed, decisions made, conclusions reached, "
@@ -326,10 +380,63 @@ def compact_progressive(thread_id):
         {"role": "user", "content": f"Summarise this conversation:\n\n{conversation_text}"},
     ]
 
-    return _sse(_stream_llm(
-        client, summary_messages, "standard", current_user.id, current_user.is_premium,
-        current_app._get_current_object(), show_thinking=False, compacted=True,
-    ))
+    _app = current_app._get_current_object()
+    _thread_id = thread.id
+    _user_id = current_user.id
+    _oldest_time = all_messages[0].created_at if all_messages else datetime.now(timezone.utc)
+
+    def _stream_and_save():
+        summary_text = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+        queue_id = enter_queue(_user_id, current_user.is_premium, _app=_app)
+        if queue_id is None:
+            yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
+            return
+        try:
+            for chunk in client.stream_chat(summary_messages, mode="standard"):
+                if isinstance(chunk, dict):
+                    if "thinking_start" in chunk:
+                        yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_end" in chunk:
+                        yield f"data: {json.dumps({'thinking_end': True})}\n\n"
+                    else:
+                        prompt_tokens = chunk.get("prompt_tokens", 0)
+                        completion_tokens = chunk.get("completion_tokens", 0)
+                else:
+                    summary_text += chunk
+                    yield f"data: {json.dumps({'content': chunk, 'compacted': True}, ensure_ascii=False)}\n\n"
+
+            # Server-side save — no client confirmation needed
+            with _app.app_context():
+                for m in all_messages[:half_point]:
+                    db.session.delete(m)
+                db.session.flush()
+                user_summary = Message(
+                    thread_id=_thread_id,
+                    role="user",
+                    content=f"\U0001f4dd **Earlier conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary:",
+                    created_at=_oldest_time,
+                )
+                db.session.add(user_summary)
+                assistant_summary = Message(
+                    thread_id=_thread_id,
+                    role="assistant",
+                    content=summary_text,
+                    tokens_used=completion_tokens,
+                    created_at=_oldest_time + timedelta(seconds=1),
+                )
+                db.session.add(assistant_summary)
+                db.session.commit()
+
+            yield f"data: {json.dumps({'done': True, 'full_response': summary_text, 'compacted': True, 'compact_saved': True, 'compact_type': 'progressive', 'msg_count': msg_count, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            leave_queue(queue_id, _app=_app)
+
+    return Response(_stream_and_save(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @chat_bp.route("/chat/<string:thread_id>/clear", methods=["POST"])
