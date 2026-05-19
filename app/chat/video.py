@@ -40,9 +40,7 @@ def generate_video_stream(thread_id):
     wan22_url = current_app.config.get("WAN22_URL")
     if not wan22_url:
         def _err():
-            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "
-
-"
+            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "\n\n"
         return Response(_err(), mimetype="text/event-stream")
     gen_url = f"{wan22_url}/generate-stream"
 
@@ -135,9 +133,7 @@ def animate_image(thread_id):
     wan22_url = current_app.config.get("WAN22_URL")
     if not wan22_url:
         def _err():
-            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "
-
-"
+            yield "data: " + json.dumps({"error": "Video generation is not configured on this server."}) + "\n\n"
         return Response(_err(), mimetype="text/event-stream")
     gen_url = f"{wan22_url}/animate"
 
