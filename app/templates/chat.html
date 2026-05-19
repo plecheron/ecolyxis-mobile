@@ -425,8 +425,6 @@ async function progressiveCompact() {
     let promptTokens = 0;
     let completionTokens = 0;
     let startTime = performance.now();
-    let serverSaved = false;
-
     try {
         const resp = await fetch('/chat/' + threadId + '/compact/progressive', {
             method: 'POST',
@@ -481,7 +479,6 @@ async function progressiveCompact() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
-                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -505,23 +502,6 @@ async function progressiveCompact() {
     } catch (err) {
         sysDiv.remove();
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
-    }
-
-    // Persist (only if server didn't already save)
-    if (fullResponse && !serverSaved) {
-        const totalTokens = promptTokens + completionTokens;
-        try {
-            await fetch('/chat/' + threadId + '/compact/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: fullResponse,
-                    msg_count: halfPoint,
-                    compact_type: 'progressive',
-                    tokens_used: totalTokens > 0 ? totalTokens : null
-                })
-            });
-        } catch (e) {}
     }
 
     isStreaming = false;
@@ -553,7 +533,6 @@ async function compactConversation() {
     let completionTokens = 0;
     let startTime = performance.now();
     let firstTokenTime = null;
-    let serverSaved = false;
 
     try {
         const resp = await fetch('/chat/' + threadId + '/compact', {
@@ -603,7 +582,6 @@ async function compactConversation() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
-                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -637,22 +615,6 @@ async function compactConversation() {
     } catch (err) {
         sysDiv.remove();
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
-    }
-
-    // Persist the compaction to the DB (only if server didn't already save)
-    if (fullResponse && !serverSaved) {
-        const totalTokens = promptTokens + completionTokens;
-        try {
-            await fetch('/chat/' + threadId + '/compact/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: fullResponse,
-                    msg_count: msgCount,
-                    tokens_used: totalTokens > 0 ? totalTokens : null
-                })
-            });
-        } catch (e) {}
     }
 
     isStreaming = false;
