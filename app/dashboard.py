@@ -108,3 +108,28 @@ def delete_thread(thread_id):
         return "", 200
     flash("Thread deleted.", "success")
     return redirect(url_for("dashboard.index"))
+
+
+@dash_bp.route("/threads/bulk-delete", methods=["POST"])
+@login_required
+def bulk_delete_threads():
+    data = request.get_json(silent=True) or request.form.to_dict()
+    thread_ids = data.get("thread_ids", [])
+    if isinstance(thread_ids, str):
+        import json
+        try:
+            thread_ids = json.loads(thread_ids)
+        except (json.JSONDecodeError, TypeError):
+            thread_ids = []
+
+    if not thread_ids:
+        return jsonify({"error": "No thread IDs provided"}), 400
+
+    # Only delete threads belonging to the current user
+    deleted = Thread.query.filter(
+        Thread.id.in_(thread_ids),
+        Thread.user_id == current_user.id
+    ).delete(synchronize_session="fetch")
+    db.session.commit()
+
+    return jsonify({"deleted": deleted})

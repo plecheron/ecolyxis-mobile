@@ -593,6 +593,12 @@ a:hover {
     align-items: center;
     gap: 8px;
 }
+.dashboard-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
 
 /* Search Bar */
 .search-bar {
