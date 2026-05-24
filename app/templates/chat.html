@@ -22,6 +22,7 @@
         {% endif %}
         <div class="sidebar-actions">
             <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
