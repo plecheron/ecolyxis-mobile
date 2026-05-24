@@ -79,7 +79,7 @@ async function biometricLogin() {
 
     try {
         // Step 1: Get authentication options from server
-        const beginResp = await fetch('/webauthn/authenticate-begin', { method: 'POST' });
+        const beginResp = await fetch('/webauthn/authenticate-begin', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''} });
         if (!beginResp.ok) {
             const err = await beginResp.json();
             throw new Error(err.error || 'Failed to start authentication');
@@ -117,7 +117,10 @@ async function biometricLogin() {
 
         const finishResp = await fetch('/webauthn/authenticate-finish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
             body: JSON.stringify(finishData),
         });
 
