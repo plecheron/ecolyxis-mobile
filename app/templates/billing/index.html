@@ -8,8 +8,8 @@
             <button class="sidebar-close" onclick="closeSidebar()">✕</button>
         </div>
         <div class="sidebar-actions">
-            <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('dashboard.create_thread') }}">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
@@ -95,8 +95,8 @@
                         <p class="billing-cancel-sub">You'll keep Premium access until then.</p>
                     </div>
                     {% else %}
-                    <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('billing.cancel_subscription') }}">
+                    <form method="POST" action="{{ url_for('billing.cancel_subscription') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-outline btn-full" onclick="return confirm('Cancel your Premium subscription? You\'ll keep access until the end of your billing period.')">
                             Cancel Subscription
                         </button>

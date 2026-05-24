@@ -8,8 +8,8 @@
             <button class="sidebar-close" onclick="closeSidebar()">✕</button>
         </div>
         <div class="sidebar-actions">
-            <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('dashboard.create_thread') }}">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
@@ -70,8 +70,8 @@
                 </p>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
                     {% for amt in [5, 10, 20, 50] %}
-                    <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('wallet.topup') }}">
+                    <form method="POST" action="{{ url_for('wallet.topup') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="amount" value="{{ amt }}">
                         <button type="submit" class="btn btn-primary btn-full" style="padding:1rem;">
                             <div style="font-size:1.4rem; font-weight:700;">£{{ amt }}</div>
@@ -80,8 +80,8 @@
                     </form>
                     {% endfor %}
                 </div>
-                <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('wallet.topup') }}" style="display:flex; gap:0.5rem; align-items:center; max-width:300px;">
+                <form method="POST" action="{{ url_for('wallet.topup') }}" style="display:flex; gap:0.5rem; align-items:center; max-width:300px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <span>£</span>
                     <input type="number" name="amount" min="5" max="100" step="1" placeholder="Custom" class="input-sm" style="flex:1;">
                     <button type="submit" class="btn btn-primary btn-sm">Top Up</button>

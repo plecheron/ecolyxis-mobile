@@ -18,8 +18,8 @@
     <!-- New post form -->
     <div id="new-post-form" style="display:none;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;margin-bottom:2rem;">
         <h3>New Post</h3>
-        <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('blog.admin') }}">
+        <form method="POST" action="{{ url_for('blog.admin') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div style="margin-bottom:1rem;">
                 <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Title</label>
                 <input type="text" name="title" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
@@ -58,8 +58,8 @@
             <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.2rem;">/{{ post.slug }} · {{ post.created_at.strftime('%d %b %Y') }}</div>
         </div>
         <a href="{{ url_for('blog.view', slug=post.slug) }}" class="btn btn-outline btn-sm" style="font-size:0.75rem;">View</a>
-        <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('blog.delete', post_id=post.id) }}" onsubmit="return confirm('Delete this post?')">
+        <form method="POST" action="{{ url_for('blog.delete', post_id=post.id) }}" onsubmit="return confirm('Delete this post?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline btn-sm" style="font-size:0.75rem;color:var(--danger);">🗑️</button>
         </form>
     </div>

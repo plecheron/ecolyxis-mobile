@@ -12,8 +12,8 @@
         {% endfor %}
         {% endwith %}
 
-        <form method="POST"
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> id="login-form">
+        <form method="POST" id="login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="login">Username or Email</label>
                 <input type="text" id="login" name="login" required>
