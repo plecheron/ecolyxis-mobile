@@ -36,13 +36,16 @@
       </a></li>
       <li><a href="#section-top-users" class="sidebar-link" data-section="section-top-users">
         <span class="sidebar-icon">👥</span> Top Users
-      <li><a href="/blog/admin" class="sidebar-link"><span class="sidebar-icon">📰</span> Blog Posts</a></li>
       </a></li>
+      <li><a href="/blog/admin" class="sidebar-link"><span class="sidebar-icon">📰</span> Blog Posts</a></li>
       <li><a href="#section-errors" class="sidebar-link" data-section="section-errors">
         <span class="sidebar-icon">⚠️</span> Errors
       </a></li>
       <li><a href="#section-signups" class="sidebar-link" data-section="section-signups">
         <span class="sidebar-icon">🆕</span> Recent Signups
+      </a></li>
+      <li><a href="#section-api-requests" class="sidebar-link" data-section="section-api-requests">
+        <span class="sidebar-icon">🔑</span> Recent API Requests
       </a></li>
       <li><a href="#section-messages" class="sidebar-link" data-section="section-messages">
         <span class="sidebar-icon">💬</span> Recent Messages
@@ -157,10 +160,19 @@
     <section class="admin-section" id="section-system">
       <h2>System</h2>
       <div class="admin-grid admin-grid-4">
-        <div class="stat-card">
+        <div class="stat-card" style="grid-column:1/-1">
           <div class="stat-label">CPU</div>
           <div class="stat-value" id="sys-cpu-model">{{ sys.get('cpu_model', '—') }}</div>
           <div class="stat-sub" id="sys-cpu-sub">{{ sys.get('cpu_cores', '?') }} cores · {{ sys.load_avg|default('?') }}</div>
+          <div id="cpu-per-core-bars" style="margin-top:10px;display:grid;gap:6px">
+            {% for pct in sys.get('cpu_per_core', []) %}
+            <div class="cpu-core-bar">
+              <span class="cpu-core-label">Core {{ loop.index0 }}</span>
+              <div class="cpu-core-track"><div class="cpu-core-fill" style="width:{{ pct }}%;background:{{ '#e74c3c' if pct > 85 else '#f39c12' if pct > 60 else '#27ae60' }}"></div></div>
+              <span class="cpu-core-pct">{{ '%0.0f'|format(pct) }}%</span>
+            </div>
+            {% endfor %}
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Memory</div>
@@ -313,6 +325,32 @@
             <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '—' }}</td>
           </tr>
           {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Recent API Requests -->
+    <section class="admin-section" id="section-api-requests">
+      <h2>Recent API Requests</h2>
+      <div class="admin-table-wrap" id="api-requests-table-wrap">
+        <table class="admin-table" id="api-requests-table">
+          <thead><tr><th>Time</th><th>User</th><th>Key Name</th><th>Endpoint</th><th>Model</th><th>Prompt</th><th>Completion</th></tr></thead>
+          <tbody id="api-requests-body">
+          {% for req in recent_api_requests %}
+          <tr>
+            <td class="mono">{{ req.created_at.strftime('%H:%M:%S') if req.created_at else '—' }}</td>
+            <td>{{ req.username }}</td>
+            <td>{{ req.key_name }}</td>
+            <td class="msg-preview">{{ req.endpoint }}</td>
+            <td class="mono">{{ req.model or '—' }}</td>
+            <td class="mono">{{ '{:,}'.format(req.tokens_prompt) if req.tokens_prompt else '—' }}</td>
+            <td class="mono">{{ '{:,}'.format(req.tokens_completion) if req.tokens_completion else '—' }}</td>
+          </tr>
+          {% endfor %}
+          {% if not recent_api_requests %}
+          <tr><td colspan="7" style="text-align:center;color:var(--text-secondary, #8888aa);padding:24px">No API requests recorded yet</td></tr>
+          {% endif %}
           </tbody>
         </table>
       </div>
@@ -681,6 +719,43 @@ async function pollStats() {
     if (sys.load_avg) {
       document.getElementById('sys-cpu-sub').textContent = sys.cpu_cores + ' cores · [' + sys.load_avg.map(v => v.toFixed(2)).join(', ') + ']';
     }
+    // Per-core CPU bars
+    if (sys.cpu_per_core) {
+      const container = document.getElementById('cpu-per-core-bars');
+      if (container) {
+        let html = '';
+        sys.cpu_per_core.forEach((pct, i) => {
+          const color = pct > 85 ? '#e74c3c' : pct > 60 ? '#f39c12' : '#27ae60';
+          html += '<div class="cpu-core-bar">';
+          html += '<span class="cpu-core-label">Core ' + i + '</span>';
+          html += '<div class="cpu-core-track"><div class="cpu-core-fill" style="width:' + pct + '%;background:' + color + '"></div></div>';
+          html += '<span class="cpu-core-pct">' + Math.round(pct) + '%</span>';
+          html += '</div>';
+        });
+        container.innerHTML = html;
+      }
+    }
+    // Recent API requests
+    if (d.app && d.app.recent_api_requests) {
+      const tbody = document.getElementById('api-requests-body');
+      if (tbody) {
+        let html = '';
+        d.app.recent_api_requests.forEach(r => {
+          const time = r.created_at ? r.created_at.split('T').pop().split('.').shift().substring(0,8) : '—';
+          html += '<tr>';
+          html += '<td class="mono">' + time + '</td>';
+          html += '<td>' + (r.username || '—') + '</td>';
+          html += '<td>' + (r.key_name || '—') + '</td>';
+          html += '<td class="msg-preview">' + (r.endpoint || '—') + '</td>';
+          html += '<td class="mono">' + (r.model || '—') + '</td>';
+          html += '<td class="mono">' + (r.tokens_prompt ? Number(r.tokens_prompt).toLocaleString() : '—') + '</td>';
+          html += '<td class="mono">' + (r.tokens_completion ? Number(r.tokens_completion).toLocaleString() : '—') + '</td>';
+          html += '</tr>';
+        });
+        if (!html) html = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary, #8888aa);padding:24px">No API requests recorded yet</td></tr>';
+        tbody.innerHTML = html;
+      }
+    }
 
     // App
     const app = d.app;
@@ -725,8 +800,10 @@ sections.forEach(s => observer.observe(s));
 // Smooth scroll on click
 sidebarLinks.forEach(link => {
   link.addEventListener('click', (e) => {
+    const sectionId = link.dataset.section;
+    if (!sectionId) return; // let normal navigation happen
     e.preventDefault();
-    const target = document.getElementById(link.dataset.section);
+    const target = document.getElementById(sectionId);
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }

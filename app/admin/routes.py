@@ -30,7 +30,6 @@ def index():
     services = {
         "ecolyxis (gunicorn)": _service_status("ecolyxis"),
         "caddy": _service_status("caddy"),
-        "fail2ban": _service_status("fail2ban"),
     }
 
     return render_template(
@@ -44,6 +43,7 @@ def index():
         token_chart=_token_chart_data(30),
         user_chart=_user_chart_data(30),
         top_users=_top_users(20),
+        recent_api_requests=app_stats.get("recent_api_requests", []),
         test_run=_get_last_test_run(),
         now=datetime.now(timezone.utc),
     )
@@ -93,6 +93,10 @@ def api_stats():
         if isinstance(m.get("created_at"), datetime):
             m["created_at"] = m["created_at"].isoformat()
 
+    for r in app_stats.get("recent_api_requests", []):
+        if isinstance(r.get("created_at"), datetime):
+            r["created_at"] = r["created_at"].isoformat()
+
     return jsonify({
         "system": _system_stats(),
         "app": app_stats,
@@ -100,7 +104,6 @@ def api_stats():
         "services": {
             "ecolyxis (gunicorn)": _service_status("ecolyxis"),
             "caddy": _service_status("caddy"),
-            "fail2ban": _service_status("fail2ban"),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })

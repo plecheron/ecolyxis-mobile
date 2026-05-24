@@ -10,6 +10,7 @@ import uuid
 from flask import request, jsonify, Response, current_app
 import requests as http_requests
 
+from app import db
 from app.models import Wallet
 from app.api import (
     api_bp,

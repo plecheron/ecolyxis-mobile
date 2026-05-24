@@ -60,6 +60,13 @@ def _system_stats():
 
         stats["cpu_cores"] = os.cpu_count() or 1
 
+        # Per-core CPU usage
+        try:
+            import psutil
+            stats["cpu_per_core"] = psutil.cpu_percent(percpu=True, interval=0)
+        except Exception:
+            pass
+
     except Exception as e:
         stats["error"] = str(e)
     return stats
@@ -76,6 +83,34 @@ def _format_uptime(seconds):
         parts.append(f"{hours}h")
     parts.append(f"{mins}m")
     return " ".join(parts)
+
+
+def _recent_api_requests(limit=20):
+    """Fetch recent API usage records with user/key info."""
+    try:
+        from app.models import ApiUsage, ApiKey
+        rows = (
+            db.session.query(ApiUsage, ApiKey, User)
+            .join(ApiKey, ApiUsage.api_key_id == ApiKey.id)
+            .join(User, ApiKey.user_id == User.id)
+            .order_by(ApiUsage.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "created_at": usage.created_at,
+                "username": user.username,
+                "key_name": api_key.name,
+                "endpoint": usage.endpoint,
+                "model": usage.model,
+                "tokens_prompt": usage.tokens_prompt,
+                "tokens_completion": usage.tokens_completion,
+            }
+            for usage, api_key, user in rows
+        ]
+    except Exception:
+        return []
 
 
 def _service_status(name):
@@ -150,6 +185,7 @@ def _app_stats():
         "avg_messages_per_user": avg_msgs,
         "recent_users": recent_users,
         "recent_messages": recent_messages,
+        "recent_api_requests": _recent_api_requests(),
     }
 
 

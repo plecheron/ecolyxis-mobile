@@ -27,8 +27,8 @@
         </div>
         <nav class="sidebar-threads">
             {% for t in threads %}
-            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item {{ 'active' if t.id == thread.id }}">
-                <span class="thread-title">{{ t.title }}</span>
+            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}">
+                <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
                 <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
             </a>
             {% endfor %}
@@ -70,14 +70,18 @@
                     </div>
                 </div>
             </div>
-            <select class="model-select" id="model-select" style="background:var(--bg-secondary,#161b22);color:var(--text-muted,#8b949e);border:1px solid var(--border,#30363d);border-radius:6px;padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-                <option value="quick">Quick</option>
-                <option value="standard">Standard</option>
-                <option value="long">Long</option>
-                <option value="precise">Precise</option>
-                <option value="image">Image</option>
-                <option value="video">Video</option>
-                {% if rate_info.is_premium %}<option value="vision">Vision</option>{% endif %}
+            <select class="model-select" id="model-select">
+                <optgroup label="💬 Chat Modes">
+                    <option value="quick">⚡ Quick — Fast, no thinking</option>
+                    <option value="standard" selected>🌿 Standard — Balanced</option>
+                    <option value="long">📖 Long — Extended context</option>
+                    <option value="precise">🎯 Precise — Plan → Draft → Refine</option>
+                </optgroup>
+                <optgroup label="🎨 Media">
+                    <option value="image">🖼️ Image Generation</option>
+                    <option value="video">🎬 Video Generation</option>
+                    {% if rate_info.is_premium %}<option value="vision">👁️ Vision — Image understanding</option>{% endif %}
+                </optgroup>
             </select>
             <div class="chat-header-right">
                 {% if not rate_info.is_premium %}
@@ -140,6 +144,7 @@
 <script>
 const threadId = '{{ thread.id }}';
 const chatUrl = "/chat/" + threadId + "/message";
+const threadTitle = '{{ thread.title | replace("'", "\\'") }}';
 const messagesDiv = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
@@ -425,8 +430,6 @@ async function progressiveCompact() {
     let promptTokens = 0;
     let completionTokens = 0;
     let startTime = performance.now();
-    let serverSaved = false;
-
     try {
         const resp = await fetch('/chat/' + threadId + '/compact/progressive', {
             method: 'POST',
@@ -481,7 +484,6 @@ async function progressiveCompact() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
-                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -505,23 +507,6 @@ async function progressiveCompact() {
     } catch (err) {
         sysDiv.remove();
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
-    }
-
-    // Persist (only if server didn't already save)
-    if (fullResponse && !serverSaved) {
-        const totalTokens = promptTokens + completionTokens;
-        try {
-            await fetch('/chat/' + threadId + '/compact/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: fullResponse,
-                    msg_count: halfPoint,
-                    compact_type: 'progressive',
-                    tokens_used: totalTokens > 0 ? totalTokens : null
-                })
-            });
-        } catch (e) {}
     }
 
     isStreaming = false;
@@ -553,7 +538,6 @@ async function compactConversation() {
     let completionTokens = 0;
     let startTime = performance.now();
     let firstTokenTime = null;
-    let serverSaved = false;
 
     try {
         const resp = await fetch('/chat/' + threadId + '/compact', {
@@ -603,7 +587,6 @@ async function compactConversation() {
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
                         completionTokens = parsed.completion_tokens || 0;
-                        if (parsed.compact_saved) serverSaved = true;
                     }
                 } catch {}
             }
@@ -637,22 +620,6 @@ async function compactConversation() {
     } catch (err) {
         sysDiv.remove();
         addMessage('assistant', '⚠️ Error: ' + err.message, false);
-    }
-
-    // Persist the compaction to the DB (only if server didn't already save)
-    if (fullResponse && !serverSaved) {
-        const totalTokens = promptTokens + completionTokens;
-        try {
-            await fetch('/chat/' + threadId + '/compact/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: fullResponse,
-                    msg_count: msgCount,
-                    tokens_used: totalTokens > 0 ? totalTokens : null
-                })
-            });
-        } catch (e) {}
     }
 
     isStreaming = false;
@@ -1067,6 +1034,26 @@ async function sendMessage(e) {
         } catch (e) {}
     }
 
+    // Auto-generate thread title after first message in a new thread
+    if (fullResponse && threadTitle === 'New Chat') {
+        try {
+            const titleResp = await fetch("/chat/" + threadId + "/generate-title", { method: "POST" });
+            if (titleResp.ok) {
+                const titleData = await titleResp.json();
+                if (titleData.title && titleData.title !== 'New Chat') {
+                    // Update sidebar thread title
+                    const activeLink = document.querySelector('.thread-item.active .thread-title');
+                    if (activeLink) activeLink.textContent = titleData.title;
+                    // Update mobile header
+                    const mobileTitle = document.querySelector('.mobile-title');
+                    if (mobileTitle) mobileTitle.textContent = titleData.title;
+                    // Update page title
+                    document.title = titleData.title + ' — Ecolyxis';
+                }
+            }
+        } catch (e) {}
+    }
+
     isStreaming = false;
     sendBtn.disabled = false;
 }
@@ -1404,6 +1391,60 @@ function openSidebar() {
 function closeSidebar() {
     document.getElementById("sidebar").classList.remove("open");
     document.getElementById("sidebar-overlay").classList.remove("active");
+}
+
+// ===== Thread Rename (double-click) =====
+function startRenameThread(e, tId, el) {
+    e.preventDefault();
+    e.stopPropagation();
+    const current = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'thread-rename-input';
+    input.value = current;
+    input.maxLength = 200;
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+
+    async function save() {
+        const newTitle = input.value.trim();
+        const span = document.createElement('span');
+        span.className = 'thread-title';
+        span.setAttribute('ondblclick', "startRenameThread(event, '" + tId + "', this)");
+        if (newTitle && newTitle !== current) {
+            try {
+                const resp = await fetch('/chat/' + tId + '/rename', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle })
+                });
+                if (resp.ok) {
+                    span.textContent = newTitle;
+                    // If this is the active thread, update mobile header & page title
+                    const link = input.closest('.thread-item');
+                    if (link && link.classList.contains('active')) {
+                        const mobileTitle = document.querySelector('.mobile-title');
+                        if (mobileTitle) mobileTitle.textContent = newTitle;
+                        document.title = newTitle + ' — Ecolyxis';
+                    }
+                } else {
+                    span.textContent = current;
+                }
+            } catch (err) {
+                span.textContent = current;
+            }
+        } else {
+            span.textContent = current;
+        }
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.value = current; input.blur(); }
+    });
 }
 
 // Render existing assistant messages as markdown

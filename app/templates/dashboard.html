@@ -65,13 +65,18 @@
                         {{ '✨ Premium' if current_user.is_premium else '🌱 Free' }}
                     </span>
                 </h2>
-                <form class="search-bar" method="GET" action="{{ url_for('dashboard.index') }}">
-                    <input type="text" name="q" placeholder="Search messages..." value="{{ query|default('') }}" autocomplete="off">
-                    <button type="submit" class="btn btn-outline btn-sm">🔍</button>
-                    {% if query %}
-                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline btn-sm">Clear</a>
+                <div class="dashboard-header-actions">
+                    <form class="search-bar" method="GET" action="{{ url_for('dashboard.index') }}">
+                        <input type="text" name="q" placeholder="Search messages..." value="{{ query|default('') }}" autocomplete="off">
+                        <button type="submit" class="btn btn-outline btn-sm">🔍</button>
+                        {% if query %}
+                        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline btn-sm">Clear</a>
+                        {% endif %}
+                    </form>
+                    {% if threads|length > 1 %}
+                    <button id="select-mode-btn" class="thread-select-btn" onclick="toggleSelectMode()">☑️ Select</button>
                     {% endif %}
-                </form>
+                </div>
             </div>
 
             {% if query %}
@@ -115,11 +120,12 @@
 
             <!-- Thread List -->
             {% if threads %}
-            <div class="thread-grid">
+            <div class="thread-grid" id="thread-grid">
                 {% for t in threads %}
                 <div class="thread-card" id="thread-{{ t.id }}">
+                    <input type="checkbox" class="thread-checkbox" data-thread-id="{{ t.id }}" onchange="toggleThreadSelect('{{ t.id }}')">
                     <a href="{{ url_for('chat.view', thread_id=t.id) }}">
-                        <h3>{{ t.title }}</h3>
+                        <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">{{ t.title }}</h3>
                         <div class="thread-card-meta">
                             <span>{{ msg_counts.get(t.id, 0) }} messages</span>
                             <span>{{ t.updated_at.strftime('%d %B %Y, %H:%M') }}</span>
@@ -148,6 +154,17 @@
             {% endif %}
         </div>
     </main>
+</div>
+
+<!-- Bulk Delete Action Bar -->
+<div class="bulk-action-bar" id="bulk-action-bar">
+    <div class="bulk-action-info">
+        <span id="bulk-selected-count">0</span> threads selected
+        <button class="btn-bulk-cancel" onclick="toggleSelectMode()" style="margin-left:8px;font-size:0.78rem">Cancel</button>
+    </div>
+    <div class="bulk-action-buttons">
+        <button class="btn-bulk-delete" id="bulk-delete-btn" onclick="bulkDelete()">🗑️ Delete Selected</button>
+    </div>
 </div>
 
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>

@@ -485,6 +485,17 @@ a:hover {
     color: var(--text-muted);
     flex-shrink: 0;
 }
+.thread-rename-input {
+    flex: 1;
+    margin-right: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    outline: none;
+}
 .sidebar-empty {
     text-align: center;
     color: var(--text-muted);
@@ -581,6 +592,12 @@ a:hover {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+.dashboard-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 /* Search Bar */
@@ -769,6 +786,21 @@ a:hover {
 }
 .model-select {
     outline: none;
+    background: var(--bg-secondary, #161b22);
+    color: var(--text-muted, #8b949e);
+    border: 1px solid var(--border, #30363d);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    min-width: 140px;
+}
+.model-select:hover {
+    border-color: var(--accent, #2ecc71);
+}
+.model-select:focus {
+    border-color: var(--accent, #2ecc71);
+    box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.15);
 }
 
 /* Rate Limit */

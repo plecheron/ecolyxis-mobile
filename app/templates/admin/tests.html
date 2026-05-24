@@ -551,13 +551,27 @@ document.getElementById('run-tests-btn')?.addEventListener('click', async () => 
   status.style.border = '1px solid #f39c1240';
   status.style.color = '#f39c12';
   status.textContent = 'Running test suite — this takes about 5 seconds…';
+
+  // Show elapsed timer
+  const startTime = Date.now();
+  const timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    status.textContent = 'Running test suite… ' + elapsed + 's elapsed';
+  }, 1000);
+
   try {
     const r = await fetch('/admin/tests/run', { method: 'POST' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    location.reload();
     const data = await r.json();
-    location.reload();
+    clearInterval(timerInterval);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    status.style.background = 'rgba(39,174,96,.1)';
+    status.style.border = '1px solid #27ae6040';
+    status.style.color = '#27ae60';
+    status.textContent = 'Tests completed in ' + elapsed + 's — reloading results…';
+    setTimeout(() => location.reload(), 500);
   } catch (e) {
+    clearInterval(timerInterval);
     status.style.background = 'rgba(231,76,60,.1)';
     status.style.border = '1px solid #e74c3c40';
     status.style.color = '#e74c3c';

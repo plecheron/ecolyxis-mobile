@@ -1,7 +1,10 @@
-"""HiDream image generation and upscaling.
+"""Z-Image Turbo image generation and upscaling.
 
 Three endpoints: synchronous generate, SSE-streamed generate, and SSE
 upscale (reuses seed and steps up to the next size in GeneratedImage.SIZES).
+
+Backend: Z-Image Turbo server (Flask) on host01, tunnelled to VPS via
+image-tunnel.service on port 8083.
 """
 import json
 import os
@@ -15,10 +18,34 @@ from app.models import Thread, GeneratedImage
 from app.chat import chat_bp, check_rate_limit, _ensure_upload_dir, UPLOAD_FOLDER
 
 
+def _get_image_url():
+    """Return the configured image generation backend URL."""
+    url = current_app.config.get("HIDREAM_URL") or current_app.config.get("IMAGE_URL")
+    if not url:
+        return None
+    return url.rstrip("/")
+
+
+def _save_remote_image(remote_url):
+    """Fetch an image from the remote server and save it locally.
+
+    Returns (local_filename, local_path) or raises.
+    """
+    _ensure_upload_dir()
+    img_resp = req_lib.get(remote_url, timeout=60)
+    if img_resp.status_code != 200:
+        raise RuntimeError(f"Failed to fetch image: HTTP {img_resp.status_code}")
+    local_name = f"{uuid.uuid4().hex[:12]}.png"
+    local_path = os.path.join(UPLOAD_FOLDER, local_name)
+    with open(local_path, "wb") as f:
+        f.write(img_resp.content)
+    return local_name, local_path
+
+
 @chat_bp.route("/chat/<string:thread_id>/generate-image", methods=["POST"])
 @login_required
 def generate_image_endpoint(thread_id):
-    """Generate an image using HiDream and return it."""
+    """Generate an image using Z-Image Turbo (synchronous)."""
     Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
 
     allowed, _, limit = check_rate_limit()
@@ -30,15 +57,16 @@ def generate_image_endpoint(thread_id):
     if not prompt:
         return {"error": "Empty prompt"}, 400
 
-    width = data.get("width", 128)
-    height = data.get("height", 128)
+    width = data.get("width", 1024)
+    height = data.get("height", 1024)
 
-    hidream_url = current_app.config.get("HIDREAM_URL")
-    if not hidream_url:
+    image_url = _get_image_url()
+    if not image_url:
         return {"error": "Image generation is not configured on this server."}, 503
+
     try:
         resp = req_lib.post(
-            f"{hidream_url}/generate",
+            f"{image_url}/generate",
             json={"prompt": prompt, "width": width, "height": height},
             timeout=300,
         )
@@ -47,32 +75,43 @@ def generate_image_endpoint(thread_id):
     except req_lib.RequestException as e:
         return {"error": f"Image service unavailable: {e}"}, 503
 
-    _ensure_upload_dir()
-    filename = f"{uuid.uuid4().hex[:12]}.png"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    with open(filepath, "wb") as f:
-        f.write(resp.content)
+    result = resp.json()
+    remote_filename = result.get("filename")
+    actual_seed = result.get("seed", 42)
+    gen_width = result.get("width", width)
+    gen_height = result.get("height", height)
 
-    actual_seed = int(resp.headers.get("X-Seed", 42)) if hasattr(resp, "headers") else 42
+    # Fetch the generated image from the backend and save locally
+    try:
+        local_name, _ = _save_remote_image(f"{image_url}/outputs/{remote_filename}")
+    except Exception as e:
+        return {"error": f"Failed to save generated image: {e}"}, 502
+
     img_record = GeneratedImage(
         user_id=current_user.id,
         thread_id=thread_id,
         prompt=prompt,
         seed=actual_seed,
-        width=width,
-        height=height,
-        filename=filename,
+        width=gen_width,
+        height=gen_height,
+        filename=local_name,
     )
     db.session.add(img_record)
     db.session.commit()
 
-    return {"url": f"/uploads/{filename}", "filename": filename, "size": [width, height], "seed": actual_seed, "image_id": img_record.id}
+    return {
+        "url": f"/uploads/{local_name}",
+        "filename": local_name,
+        "size": [gen_width, gen_height],
+        "seed": actual_seed,
+        "image_id": img_record.id,
+    }
 
 
 @chat_bp.route("/chat/<string:thread_id>/generate-image-stream", methods=["POST"])
 @login_required
 def generate_image_stream(thread_id):
-    """SSE proxy: stream image generation progress from HiDream server."""
+    """SSE proxy: stream image generation progress from Z-Image Turbo."""
     Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
 
     allowed, _, limit = check_rate_limit()
@@ -90,11 +129,17 @@ def generate_image_stream(thread_id):
             yield "data: " + err + "\n\n"
         return Response(err_stream2(), mimetype="text/event-stream")
 
-    width = data.get("width", 128)
-    height = data.get("height", 128)
+    width = data.get("width", 1024)
+    height = data.get("height", 1024)
 
-    hidream_url = current_app.config.get("HIDREAM_URL")
-    gen_url = f"{hidream_url}/generate-stream"
+    image_url = _get_image_url()
+    if not image_url:
+        err = json.dumps({"error": "Image generation is not configured on this server."})
+        def err_stream3():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream3(), mimetype="text/event-stream")
+
+    gen_url = f"{image_url}/generate-stream"
 
     _ensure_upload_dir()
     _gen_user_id = current_user.id
@@ -119,32 +164,31 @@ def generate_image_stream(thread_id):
                         continue
 
                     if event.get("stage") == "done" and event.get("filename"):
-                        img_url = f"{hidream_url}/outputs/{event['filename']}"
+                        remote_file = event["filename"]
                         try:
-                            img_resp = req_lib.get(img_url, timeout=30)
-                            if img_resp.status_code == 200:
-                                local_name = f"{uuid.uuid4().hex[:12]}.png"
-                                local_path = os.path.join(UPLOAD_FOLDER, local_name)
-                                with open(local_path, "wb") as imgf:
-                                    imgf.write(img_resp.content)
-                                event["url"] = f"/uploads/{local_name}"
-                                event["filename"] = local_name
-                                actual_seed = event.get("seed", 42)
-                                img_record = GeneratedImage(
-                                    user_id=_gen_user_id,
-                                    thread_id=thread_id,
-                                    prompt=prompt,
-                                    seed=actual_seed,
-                                    width=width,
-                                    height=height,
-                                    filename=local_name,
-                                )
-                                db.session.add(img_record)
-                                db.session.flush()
-                                event["image_id"] = img_record.id
-                                db.session.commit()
-                                event["width"] = width
-                                event["height"] = height
+                            local_name, _ = _save_remote_image(
+                                f"{image_url}/outputs/{remote_file}"
+                            )
+                            actual_seed = event.get("seed", 42)
+                            gen_w = event.get("width", width)
+                            gen_h = event.get("height", height)
+                            img_record = GeneratedImage(
+                                user_id=_gen_user_id,
+                                thread_id=thread_id,
+                                prompt=prompt,
+                                seed=actual_seed,
+                                width=gen_w,
+                                height=gen_h,
+                                filename=local_name,
+                            )
+                            db.session.add(img_record)
+                            db.session.flush()
+                            event["url"] = f"/uploads/{local_name}"
+                            event["filename"] = local_name
+                            event["image_id"] = img_record.id
+                            event["width"] = gen_w
+                            event["height"] = gen_h
+                            db.session.commit()
                         except Exception as e:
                             event["error"] = f"Failed to save image: {e}"
 
@@ -174,10 +218,16 @@ def upscale_image(thread_id):
     img = GeneratedImage.query.filter_by(id=image_id, user_id=current_user.id).first_or_404()
     next_size = img.next_size()
     if next_size is None:
-        return {"error": "Already at maximum size (512x512)"}, 400
+        return {"error": "Already at maximum size"}, 400
 
-    hidream_url = current_app.config.get("HIDREAM_URL")
-    gen_url = f"{hidream_url}/generate-stream"
+    image_url = _get_image_url()
+    if not image_url:
+        err = json.dumps({"error": "Image generation is not configured on this server."})
+        def err_stream():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream(), mimetype="text/event-stream")
+
+    gen_url = f"{image_url}/generate-stream"
 
     _ensure_upload_dir()
     _user_id = current_user.id
@@ -205,30 +255,29 @@ def upscale_image(thread_id):
                         continue
 
                     if event.get("stage") == "done" and event.get("filename"):
-                        img_url = f"{hidream_url}/outputs/{event['filename']}"
+                        remote_file = event["filename"]
                         try:
-                            img_resp = req_lib.get(img_url, timeout=30)
-                            if img_resp.status_code == 200:
-                                local_name = f"{uuid.uuid4().hex[:12]}.png"
-                                local_path = os.path.join(UPLOAD_FOLDER, local_name)
-                                with open(local_path, "wb") as imgf:
-                                    imgf.write(img_resp.content)
-                                event["url"] = f"/uploads/{local_name}"
-                                event["filename"] = local_name
-                                new_img = GeneratedImage(
-                                    user_id=_user_id,
-                                    thread_id=thread_id,
-                                    prompt=_prompt,
-                                    seed=_seed,
-                                    width=next_size,
-                                    height=next_size,
-                                    filename=local_name,
-                                    parent_id=_parent_id,
-                                )
-                                db.session.add(new_img)
-                                db.session.flush()
-                                event["image_id"] = new_img.id
-                                db.session.commit()
+                            local_name, _ = _save_remote_image(
+                                f"{image_url}/outputs/{remote_file}"
+                            )
+                            new_img = GeneratedImage(
+                                user_id=_user_id,
+                                thread_id=thread_id,
+                                prompt=_prompt,
+                                seed=_seed,
+                                width=next_size,
+                                height=next_size,
+                                filename=local_name,
+                                parent_id=_parent_id,
+                            )
+                            db.session.add(new_img)
+                            db.session.flush()
+                            event["url"] = f"/uploads/{local_name}"
+                            event["filename"] = local_name
+                            event["image_id"] = new_img.id
+                            event["width"] = next_size
+                            event["height"] = next_size
+                            db.session.commit()
                         except Exception as e:
                             event["error"] = f"Failed to save image: {e}"
 
