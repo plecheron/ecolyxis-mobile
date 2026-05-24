@@ -80,6 +80,7 @@ def create_app(test_config=None):
 
     @app.before_request
     def _check_csrf():
+        from flask import request, session, jsonify
         # Skip safe methods
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return None
