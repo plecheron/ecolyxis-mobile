@@ -157,10 +157,28 @@ def _rate_headers(api_key, wallet):
     }
 
 
+def _estimate_tokens(text):
+    """Rough server-side token estimate (~4 chars per token)."""
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _apply_token_floor(reported, estimated):
+    """Use reported tokens, but floor to 50% of estimated if backend under-reports."""
+    if reported > 0:
+        return reported
+    if estimated > 0:
+        return max(1, estimated // 2)
+    return 0
+
+
 def _log_usage_and_debit(app, api_key_id, wallet_id, endpoint, model, prompt_tokens, completion_tokens):
     """Log API usage and debit wallet. Runs inside an explicit app context."""
     with app.app_context():
         try:
+            prompt_tokens = max(prompt_tokens, 1)  # floor at 1 to avoid zero-cost logging
+            completion_tokens = max(completion_tokens, 1)
             usage = ApiUsage(
                 api_key_id=api_key_id,
                 endpoint=endpoint,
@@ -184,10 +202,26 @@ def _log_usage_and_debit(app, api_key_id, wallet_id, endpoint, model, prompt_tok
                         api_key_id=api_key_id,
                     )
                     db.session.add(txn)
+                elif wallet.balance_pence > 0:
+                    # Partial debit: drain remaining balance rather than giving free inference
+                    partial = wallet.balance_pence
+                    wallet.balance_pence = 0
+                    txn = Transaction(
+                        wallet_id=wallet_id,
+                        type="usage",
+                        amount_pence=-partial,
+                        description=f"API usage (partial debit): {total_tokens:,} tokens, charged {partial}p of {cost_pence}p",
+                        api_key_id=api_key_id,
+                    )
+                    db.session.add(txn)
+                    app.logger.warning(
+                        f"Wallet {wallet_id} partially debited {partial}p of {cost_pence}p "
+                        f"for {total_tokens} tokens. Balance now zero."
+                    )
                 else:
                     app.logger.warning(
-                        f"Wallet {wallet_id} insufficient balance for {cost_pence}p debit "
-                        f"(had {wallet.balance_pence}p). Tokens: {total_tokens}"
+                        f"Wallet {wallet_id} zero balance, skipped debit of {cost_pence}p "
+                        f"for {total_tokens} tokens (streaming request started before balance exhausted)."
                     )
 
             db.session.commit()

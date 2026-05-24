@@ -11,6 +11,21 @@ login_manager.login_view = "auth.login"
 login_manager.login_message = "Please log in to access your chats."
 
 
+def _validate_config(app):
+    """Validate critical config at startup. Raises RuntimeError if secrets are missing."""
+    if not app.config.get("SECRET_KEY"):
+        raise RuntimeError("SECRET_KEY must be set via environment variable or .env file")
+    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+        raise RuntimeError("DATABASE_URL must be set via environment variable or .env file")
+    # Warn (not crash) if Stripe config looks like placeholders
+    sk = app.config.get("STRIPE_SECRET_KEY", "")
+    if sk and sk.startswith("sk_test_placeholder"):
+        app.logger.warning("STRIPE_SECRET_KEY is using a placeholder value — Stripe payments will not work")
+    whsec = app.config.get("STRIPE_WEBHOOK_SECRET", "")
+    if whsec and whsec.startswith("whsec_placeholder"):
+        app.logger.warning("STRIPE_WEBHOOK_SECRET is using a placeholder value — webhook verification will fail")
+
+
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -20,6 +35,10 @@ def create_app(test_config=None):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
+
+    # Validate secrets (skip in testing mode)
+    if not app.config.get("TESTING"):
+        _validate_config(app)
 
     from app.models import User
 
@@ -54,6 +73,35 @@ def create_app(test_config=None):
     app.register_blueprint(legal_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(pricing_bp)
+
+    # CSRF protection for all non-API POST routes
+    from app.csrf import generate_csrf_token, validate_csrf_token
+    app.jinja_env.globals["csrf_token"] = generate_csrf_token
+
+    @app.before_request
+    def _check_csrf():
+        # Skip safe methods
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        # API routes use Bearer token auth — exempt
+        if request.path.startswith("/v1/"):
+            return None
+        # Health checks — exempt
+        if request.path.startswith("/health"):
+            return None
+        # Webhook endpoints — exempt (verified by Stripe signatures)
+        if request.path.startswith("/billing/"):
+            return None
+
+        token = request.headers.get("X-CSRFToken") or request.form.get("csrf_token")
+        if not validate_csrf_token(token):
+            from flask import session as _sess
+            # Generate a fresh token so the next request can succeed
+            generate_csrf_token()
+            if request.is_json or request.headers.get("Accept", "").startswith("application/json"):
+                return jsonify({"error": "CSRF token validation failed"}), 403
+            return "CSRF token validation failed. Please go back and resubmit.", 403
+        return None
 
     @app.route("/")
     def landing():

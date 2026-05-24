@@ -8,7 +8,8 @@
             <button class="sidebar-close" onclick="closeSidebar()">✕</button>
         </div>
         <div class="sidebar-actions">
-            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+            <form method="POST"
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('dashboard.create_thread') }}">
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
@@ -59,7 +60,8 @@
                 <div class="api-section-header">
                     <h3>Your Keys ({{ keys|length }}/{{ max_keys }})</h3>
                     {% if keys|length < max_keys %}
-                    <form method="POST" action="{{ url_for('apikeys.create') }}" class="inline-form">
+                    <form method="POST"
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('apikeys.create') }}" class="inline-form">
                         <input type="text" name="name" placeholder="Key name (e.g. Laptop)" maxlength="80" class="input-sm">
                         <button type="submit" class="btn btn-primary btn-sm">+ Create Key</button>
                     </form>
@@ -104,11 +106,13 @@
                         </div>
                         <div class="api-key-actions">
                             {% if key.active %}
-                            <form method="POST" action="{{ url_for('apikeys.revoke', key_id=key.id) }}">
+                            <form method="POST"
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('apikeys.revoke', key_id=key.id) }}">
                                 <button type="submit" class="btn btn-outline btn-sm" onclick="return confirm('Revoke this key? It will stop working immediately.')">Revoke</button>
                             </form>
                             {% endif %}
-                            <form method="POST" action="{{ url_for('apikeys.delete', key_id=key.id) }}">
+                            <form method="POST"
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('apikeys.delete', key_id=key.id) }}">
                                 <button type="submit" class="btn btn-outline btn-sm btn-danger" onclick="return confirm('Delete this key and all usage data?')">Delete</button>
                             </form>
                         </div>

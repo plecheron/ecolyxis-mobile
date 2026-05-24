@@ -1648,8 +1648,26 @@ function hideReconnectBanner() {
     if (banner) banner.remove();
 }
 
+// CSRF token auto-injection for all fetch POST requests
+const _csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const _realFetch = window.fetch.bind(window);
+
+function _csrfFetch(...args) {
+    const [url, opts = {}] = args;
+    if (opts.method && opts.method.toUpperCase() !== 'GET' && opts.method.toUpperCase() !== 'HEAD') {
+        opts.headers = opts.headers || {};
+        if (!(opts.headers instanceof Headers)) {
+            opts.headers = new Headers(opts.headers || {});
+        }
+        if (!opts.headers.has('X-CSRFToken')) {
+            opts.headers.set('X-CSRFToken', _csrfToken);
+        }
+    }
+    return _realFetch(url, opts);
+}
+
 // Monitor fetch errors in streaming for reconnection
-const originalFetch = window.fetch;
+const originalFetch = _csrfFetch;
 window.fetch = function(...args) {
     return originalFetch.apply(this, args).catch(err => {
         if (isStreaming && reconnectAttempts < MAX_RECONNECT) {

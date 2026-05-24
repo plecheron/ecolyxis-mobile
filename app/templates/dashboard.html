@@ -9,7 +9,8 @@
             <button class="sidebar-close" onclick="closeSidebar()">✕</button>
         </div>
         <div class="sidebar-actions">
-            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+            <form method="POST"
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('dashboard.create_thread') }}">
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
@@ -146,7 +147,8 @@
             <div class="empty-state">
                 <p>🌱 {{ 'No threads match your search.' if query else 'Start your first conversation with sustainable AI' }}</p>
                 {% if not query %}
-                <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <form method="POST"
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('dashboard.create_thread') }}">
                     <button type="submit" class="btn btn-primary btn-lg">Start Chatting</button>
                 </form>
                 {% endif %}

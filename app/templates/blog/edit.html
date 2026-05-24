@@ -15,7 +15,8 @@
     {% endfor %}
     {% endwith %}
 
-    <form method="POST" action="{{ url_for('blog.edit', post_id=post.id) }}" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;">
+    <form method="POST"
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> action="{{ url_for('blog.edit', post_id=post.id) }}" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;">
         <div style="margin-bottom:1rem;">
             <label style="display:block;font-size:0.85rem;margin-bottom:0.3rem;">Title</label>
             <input type="text" name="title" value="{{ post.title }}" required style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:inherit;">
