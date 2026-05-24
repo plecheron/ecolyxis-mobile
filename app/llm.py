@@ -28,7 +28,7 @@ class LLMClient:
             "messages": messages,
             "stream": True,
             "stream_options": {"include_usage": True},
-            "max_tokens": 2048,
+            "max_tokens": 65536,
             "temperature": 0.7,
             "chat_template_kwargs": {"enable_thinking": enable_thinking},
         }
@@ -146,6 +146,20 @@ class LLMClient:
         # Legacy: already a data URL
         url = image_part.get("url", "")
         if url.startswith("data:"):
+            # Convert webp data URLs to PNG since llama-server can't decode WebP
+            if "image/webp" in url:
+                try:
+                    import base64, io
+                    from PIL import Image
+                    b64_start = url.index("base64,") + 7
+                    img_data = base64.b64decode(url[b64_start:])
+                    img = Image.open(io.BytesIO(img_data))
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    png_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                    return f"data:image/png;base64,{png_b64}"
+                except Exception as e:
+                    logger.warning("Failed to convert webp data URL to PNG: %s", e)
             return url
         
         # New format: file reference
@@ -153,13 +167,29 @@ class LLMClient:
         if not filename:
             return None
         
-        import os, base64
+        import os, base64, io
         filepath = os.path.join("/opt/Ecolyxis/uploads", filename)
         if not os.path.isfile(filepath):
             logger.warning("Image file not found: %s", filepath)
             return None
         
         ext = filename.rsplit('.', 1)[-1].lower()
+        
+        # Convert WebP (and other unsupported formats) to PNG since llama-server
+        # only supports PNG and JPEG image decoding
+        unsupported = {"webp", "gif", "bmp", "tiff", "tif", "svg"}
+        if ext in unsupported:
+            try:
+                from PIL import Image
+                img = Image.open(filepath)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                logger.info("Converted %s to PNG for vision (%d bytes → %d b64)", ext, os.path.getsize(filepath), len(b64))
+                return f"data:image/png;base64,{b64}"
+            except Exception as e:
+                logger.warning("Failed to convert %s to PNG: %s, sending raw", ext, e)
+        
         mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
                 "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
         

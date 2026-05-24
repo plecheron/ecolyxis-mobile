@@ -63,7 +63,7 @@ def chat_completions():
     stream = data.get("stream", False)
     model = data.get("model", current_app.config.get("LLM_MODEL", "ecolyxis-default"))
     mode = MODEL_ALIASES.get(model)
-    max_tokens = data.get("max_tokens", 2048)
+    max_tokens = data.get("max_tokens", 65536)
     temperature = data.get("temperature", 0.7)
 
     total_images = 0

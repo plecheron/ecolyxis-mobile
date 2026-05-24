@@ -43,5 +43,5 @@ class Config:
     # Rate limiting (free tier)
     RATE_LIMIT_MESSAGES = 5
     RATE_LIMIT_WINDOW_SECONDS = 3600  # 60 minutes
-    HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://10.0.0.1:8083")
-    WAN22_URL = os.environ.get("WAN22_URL", "http://192.168.1.5:8085")
+    HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://192.168.122.5:8083")
+    WAN22_URL = os.environ.get("WAN22_URL", "http://192.168.122.5:8085")
