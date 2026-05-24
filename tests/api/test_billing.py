@@ -71,9 +71,8 @@ class TestLogUsageAndDebit:
             assert abs(txn.amount_pence) == expected_cost
             assert txn.api_key_id == api_key.id
 
-    @pytest.mark.xfail(reason="Bug #44: insufficient balance is only warned, not enforced")
     def test_insufficient_balance_rejects_debit(self, app, db, make_api_key):
-        """When balance is too low, debit should still happen and balance go to 0 (or negative)."""
+        """Bug #44: When balance is too low, wallet should still be debited (go <= 0)."""
         raw_key, api_key, wallet, user = make_api_key(balance_pence=1)
 
         from app.api import _log_usage_and_debit
