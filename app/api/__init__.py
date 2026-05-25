@@ -4,7 +4,6 @@ Shared decorators (authenticate_api, rate_limit), token-bucket rate
 limiter state, pricing constants, and the wallet/usage debit helper
 live here. Route handlers are in routes.py and completions.py.
 """
-import threading
 import time
 import math
 from datetime import datetime, timezone
@@ -29,8 +28,7 @@ MODEL_ALIASES = {
 }
 
 # --- In-memory rate limiter ---
-_rate_lock = threading.Lock()
-_rate_buckets = {}  # key_hash -> {"tokens": float, "last": float}
+# Rate limiting now uses PostgreSQL (rate_limit_bucket table)
 
 RATE_REQUESTS_PER_MIN = 30
 RATE_MESSAGES_PER_MIN = 60
@@ -38,25 +36,56 @@ DAILY_TOKEN_CAP = 100_000_000
 
 
 def _check_rate_limit(key_hash, limit, window=60):
-    """Token bucket rate limiter. Returns (allowed, remaining, retry_after)."""
+    """PostgreSQL-backed token bucket rate limiter. Consistent across all workers."""
     now = time.time()
-    with _rate_lock:
-        bucket = _rate_buckets.get(key_hash)
-        if not bucket:
-            bucket = {"tokens": float(limit), "last": now}
-            _rate_buckets[key_hash] = bucket
+    refill_rate = limit / window  # tokens per second
 
-        elapsed = now - bucket["last"]
-        bucket["tokens"] = min(float(limit), bucket["tokens"] + elapsed * (limit / window))
-        bucket["last"] = now
+    # Atomic row lock ensures consistency across workers
+    row = db.session.execute(
+        db.text(
+            "SELECT tokens, last_refill FROM rate_limit_bucket "
+            "WHERE key_hash = :kh FOR UPDATE"
+        ),
+        {"kh": key_hash},
+    ).fetchone()
 
-        if bucket["tokens"] >= 1.0:
-            bucket["tokens"] -= 1.0
-            remaining = int(bucket["tokens"])
-            return True, remaining, 0
-        else:
-            retry_after = int((1.0 - bucket["tokens"]) * (window / limit)) + 1
-            return False, 0, retry_after
+    if row is None:
+        db.session.execute(
+            db.text(
+                "INSERT INTO rate_limit_bucket (key_hash, tokens, last_refill) "
+                "VALUES (:kh, :tokens, :now)"
+            ),
+            {"kh": key_hash, "tokens": float(limit) - 1.0, "now": now},
+        )
+        db.session.commit()
+        return True, limit - 1, 0
+
+    tokens, last_refill = row[0], row[1]
+    elapsed = now - last_refill
+    tokens = min(float(limit), tokens + elapsed * refill_rate)
+
+    if tokens >= 1.0:
+        tokens -= 1.0
+        db.session.execute(
+            db.text(
+                "UPDATE rate_limit_bucket SET tokens = :tokens, last_refill = :now "
+                "WHERE key_hash = :kh"
+            ),
+            {"tokens": tokens, "now": now, "kh": key_hash},
+        )
+        db.session.commit()
+        return True, int(tokens), 0
+    else:
+        retry_after = int((1.0 - tokens) / refill_rate) + 1
+        db.session.execute(
+            db.text(
+                "UPDATE rate_limit_bucket SET tokens = :tokens, last_refill = :now "
+                "WHERE key_hash = :kh"
+            ),
+            {"tokens": tokens, "now": now, "kh": key_hash},
+        )
+        db.session.commit()
+        return False, 0, retry_after
 
 
 def _get_daily_usage(api_key_id):
