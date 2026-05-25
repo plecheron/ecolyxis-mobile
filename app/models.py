@@ -220,7 +220,7 @@ class GeneratedImage(db.Model):
     user = db.relationship("User", backref=db.backref("generated_images", lazy=True))
     parent = db.relationship("GeneratedImage", remote_side=[id], backref="upscaled_versions")
 
-    SIZES = [128, 256, 512]
+    SIZES = [128, 256, 512, 1024, 2048]
 
     def next_size(self):
         """Return the next upscale size, or None if already at max."""

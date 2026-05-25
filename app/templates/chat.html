@@ -693,7 +693,7 @@ async function sendMessage(e) {
             const imgResp = await fetch("/chat/" + threadId + "/generate-image-stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: content, width: 128, height: 128 })
+                body: JSON.stringify({ prompt: content, width: 512, height: 512 })
             });
 
             const reader = imgResp.body.getReader();
@@ -800,16 +800,7 @@ async function sendMessage(e) {
                 }
                 imgWrapper.appendChild(btnContainer);
                 msgText.appendChild(imgWrapper);
-                // Save the message with image reference
-                var saveData = JSON.stringify([
-                    {type: "text", text: "Generated image: " + content.substring(0, 100)},
-                    {type: "image", file: imgData.filename, name: imgData.filename, image_id: imgData.image_id, seed: imgData.seed, width: imgData.width || 128, height: imgData.height || 128}
-                ]);
-                await fetch("/chat/" + threadId + "/save", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content: saveData, tokens_used: 0, message_type: "mixed" })
-                });
+                // Message saved server-side
             } else if (!imgData || !imgData.error) {
                 removeThinking();
                 addMessage("assistant", "\u26a0\ufe0f Image generation failed: no response");
