@@ -64,6 +64,14 @@
                         <span class="ctx-icon">📦</span>
                         <div><span class="ctx-label">Full Compact</span><span class="ctx-desc">Summarise entire conversation</span></div>
                     </div>
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); exportChat('json')">
+                        <span class="ctx-icon">📤</span>
+                        <div><span class="ctx-label">Export JSON</span><span class="ctx-desc">Full data with metadata</span></div>
+                    </div>
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); exportChat('md')">
+                        <span class="ctx-icon">📝</span>
+                        <div><span class="ctx-label">Export Markdown</span><span class="ctx-desc">Human-readable format</span></div>
+                    </div>
                     <div class="ctx-menu-sep"></div>
                     <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); clearConversation()">
                         <span class="ctx-icon">🗑️</span>
@@ -1687,5 +1695,11 @@ window.fetch = function(...args) {
 // Online/offline detection
         window.addEventListener('offline', () => showReconnectBanner('📡 You are offline — waiting for connection...'));
 window.addEventListener('online', () => hideReconnectBanner());
+
+function exportChat(fmt) {
+    var tid = typeof threadId !== 'undefined' ? threadId : window.location.pathname.split('/')[2];
+    if (!tid) { alert('No conversation to export'); return; }
+    window.location.href = '/chat/' + tid + '/export/' + fmt;
+}
 </script>
 {% endblock %}
