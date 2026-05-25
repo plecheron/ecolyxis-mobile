@@ -18,6 +18,9 @@ from app.auth import (
 @auth_bp.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
+        # Clear any residual flash messages from previous attempts
+        session.pop("_flashes", None)
+
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")

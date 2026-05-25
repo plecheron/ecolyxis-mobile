@@ -104,7 +104,11 @@ def create_app(test_config=None):
             generate_csrf_token()
             if request.is_json or request.headers.get("Accept", "").startswith("application/json"):
                 return jsonify({"error": "CSRF token validation failed"}), 403
-            return "CSRF token validation failed. Please go back and resubmit.", 403
+            # For form submissions, redirect with flash so user gets fresh token
+            from flask import flash as _flash
+            _flash("Security token expired. Please try again.", "error")
+            # Redirect to the same path (GET) to get a fresh form
+            return redirect(request.url), 303
         return None
 
     @app.route("/")
