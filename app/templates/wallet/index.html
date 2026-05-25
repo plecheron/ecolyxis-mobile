@@ -106,7 +106,15 @@
                             {% set running_balance = namespace(value=wallet.balance_pence) %}
                             {# We need to show balance AFTER each transaction, so we iterate reversed and calculate forward #}
                             {% set ns = namespace(bal=wallet.balance_pence) %}
+                            {# Compute running balances: transactions are newest-first, balance = current balance minus future changes #}
+                            {% set ns = namespace(bal=wallet.balance_pence) %}
+                            {% set future = namespace(total=0) %}
                             {% for txn in transactions %}
+                            {% set future.total = future.total + txn.amount_pence %}
+                            {% endfor %}
+                            {% set ns.bal = wallet.balance_pence - future.total %}
+                            {% for txn in transactions %}
+                            {% set ns.bal = ns.bal + txn.amount_pence %}
                             <tr style="border-bottom:1px solid var(--border);">
                                 <td style="padding:0.5rem; white-space:nowrap;">{{ txn.created_at.strftime('%d %b %Y %H:%M') }}</td>
                                 <td style="padding:0.5rem;">{{ txn.description }}</td>
@@ -114,7 +122,7 @@
                                     {% if txn.amount_pence >= 0 %}+{% endif %}£{{ "%.2f"|format(txn.amount_pence / 100) }}
                                 </td>
                                 <td style="padding:0.5rem; text-align:right;">
-                                    —
+                                    £{{ "%.2f"|format(ns.bal / 100) }}
                                 </td>
                             </tr>
                             {% endfor %}
