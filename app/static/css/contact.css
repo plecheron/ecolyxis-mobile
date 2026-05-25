@@ -149,21 +149,22 @@
   }
 }
 
-/* Unavailable card */
-.contact-unavailable {
-  opacity: 0.6;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 10px,
-    rgba(0,0,0,0.02) 10px,
-    rgba(0,0,0,0.02) 20px
-  );
+/* Coming Soon card */
+.contact-soon {
+  position: relative;
+  overflow: hidden;
 }
-.contact-unavailable .contact-icon {
-  filter: grayscale(1);
-}
-.contact-muted {
-  color: var(--text-secondary) !important;
-  font-style: italic;
+.coming-soon-badge {
+  position: absolute;
+  top: 12px;
+  right: -32px;
+  background: linear-gradient(135deg, var(--accent), #6c5ce7);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 36px;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
