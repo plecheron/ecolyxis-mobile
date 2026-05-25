@@ -32,6 +32,7 @@ def view(thread_id):
     threads = (
         Thread.query.filter_by(user_id=current_user.id)
         .order_by(Thread.updated_at.desc())
+        .filter(Thread.messages.any())  # Hide empty threads
         .all()
     )
     messages = (

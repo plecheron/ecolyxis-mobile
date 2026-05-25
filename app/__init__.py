@@ -1,6 +1,6 @@
-from flask import Flask
+from flask import Flask, redirect, url_for, render_template
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager
+from flask_login import LoginManager, login_required
 from flask_migrate import Migrate
 from config import Config
 
@@ -169,5 +169,21 @@ def create_app(test_config=None):
         app.jinja_env.filters["render_message"] = render_message
         from app.queue import init_queue
         init_queue()
+
+        @app.errorhandler(404)
+        def not_found(e):
+            """Custom 404 page with navigation."""
+            return render_template("404.html"), 404
+
+        @app.errorhandler(500)
+        def internal_error(e):
+            """Custom 500 page."""
+            return render_template("500.html"), 500
+
+        @app.route("/chat")
+        @login_required
+        def chat_redirect():
+            """Redirect bare /chat to dashboard."""
+            return redirect(url_for("dashboard.index"))
 
     return app

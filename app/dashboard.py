@@ -15,6 +15,7 @@ def index():
 
     threads_q = (
         Thread.query.filter_by(user_id=current_user.id)
+        .filter(Thread.messages.any())  # Hide empty threads
         .order_by(Thread.updated_at.desc())
     )
 
