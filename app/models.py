@@ -1,5 +1,6 @@
 import json
 import uuid
+import time
 from datetime import datetime, timezone
 from app import db, login_manager
 from flask_login import UserMixin
@@ -268,3 +269,45 @@ class GeneratedVideo(db.Model):
 
     user = db.relationship("User", backref=db.backref("generated_videos", lazy=True))
     parent_image = db.relationship("GeneratedImage", backref=db.backref("animated_videos", lazy=True))
+
+
+class RateLimitBucket(db.Model):
+    """Token-bucket rate limiter state, persisted in DB for multi-worker consistency."""
+    __tablename__ = "rate_limit_bucket"
+
+    key_hash = db.Column(db.String(64), primary_key=True)
+    tokens = db.Column(db.Float, nullable=False)
+    last_refill = db.Column(db.Float, nullable=False)
+
+    @staticmethod
+    def check_and_consume(key_hash, limit, window=60):
+        """Check rate limit and consume a token. Returns (allowed, remaining, retry_after)."""
+
+        now = time.time()
+        refill_rate = limit / window
+
+        bucket = db.session.get(RateLimitBucket, key_hash)
+
+        if bucket is None:
+            bucket = RateLimitBucket(
+                key_hash=key_hash,
+                tokens=float(limit) - 1.0,
+                last_refill=now,
+            )
+            db.session.add(bucket)
+            db.session.commit()
+            return True, limit - 1, 0
+
+        elapsed = now - bucket.last_refill
+        bucket.tokens = min(float(limit), bucket.tokens + elapsed * refill_rate)
+
+        if bucket.tokens >= 1.0:
+            bucket.tokens -= 1.0
+            bucket.last_refill = now
+            db.session.commit()
+            return True, int(bucket.tokens), 0
+        else:
+            retry_after = int((1.0 - bucket.tokens) / refill_rate) + 1
+            bucket.last_refill = now
+            db.session.commit()
+            return False, 0, retry_after

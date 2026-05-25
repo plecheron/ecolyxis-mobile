@@ -40,52 +40,56 @@ class TestTokensToPence:
 class TestCheckRateLimit:
     """_check_rate_limit: token bucket rate limiter."""
 
-    def test_allows_first_request(self):
-        from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
-        allowed, remaining, retry_after = _check_rate_limit("test_key_1", RATE_REQUESTS_PER_MIN)
-        assert allowed is True
-        assert remaining >= 0
-        assert retry_after == 0
-
-    def test_exhausts_bucket(self):
-        from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
-        key = "test_exhaust_key"
-        limit = RATE_REQUESTS_PER_MIN
-        # Drain the bucket
-        for _ in range(limit):
-            allowed, _, _ = _check_rate_limit(key, limit)
+    def test_allows_first_request(self, app, db):
+        with app.app_context():
+            from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
+            allowed, remaining, retry_after = _check_rate_limit("test_key_1", RATE_REQUESTS_PER_MIN)
             assert allowed is True
-        # Next request should be denied
-        allowed, remaining, retry_after = _check_rate_limit(key, limit)
-        assert allowed is False
-        assert remaining == 0
-        assert retry_after > 0
+            assert remaining >= 0
+            assert retry_after == 0
 
-    def test_bucket_refills_over_time(self):
-        from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
-        key = "test_refill_key"
-        limit = 5
-        # Exhaust
-        for _ in range(limit):
-            _check_rate_limit(key, limit)
-        allowed, _, _ = _check_rate_limit(key, limit)
-        assert allowed is False
-        # Simulate time passing (monkey-patch time.time)
-        with patch("app.api.time.time", return_value=time.time() + 60):
+    def test_exhausts_bucket(self, app, db):
+        with app.app_context():
+            from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
+            key = "test_exhaust_key"
+            limit = RATE_REQUESTS_PER_MIN
+            # Drain the bucket
+            for _ in range(limit):
+                allowed, _, _ = _check_rate_limit(key, limit)
+                assert allowed is True
+            # Next request should be denied
+            allowed, remaining, retry_after = _check_rate_limit(key, limit)
+            assert allowed is False
+            assert remaining == 0
+            assert retry_after > 0
+
+    def test_bucket_refills_over_time(self, app, db):
+        with app.app_context():
+            from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
+            key = "test_refill_key"
+            limit = 5
+            # Exhaust
+            for _ in range(limit):
+                _check_rate_limit(key, limit)
             allowed, _, _ = _check_rate_limit(key, limit)
-            assert allowed is True
+            assert allowed is False
+            # Simulate time passing (monkey-patch time.time in the model)
+            with patch("app.models.time.time", return_value=time.time() + 60):
+                allowed, _, _ = _check_rate_limit(key, limit)
+                assert allowed is True
 
-    def test_different_keys_independent(self):
-        from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
-        limit = 3
-        # Exhaust key A
-        for _ in range(limit):
-            _check_rate_limit("key_A", limit)
-        allowed_a, _, _ = _check_rate_limit("key_A", limit)
-        assert allowed_a is False
-        # Key B should still work
-        allowed_b, _, _ = _check_rate_limit("key_B", limit)
-        assert allowed_b is True
+    def test_different_keys_independent(self, app, db):
+        with app.app_context():
+            from app.api import _check_rate_limit, RATE_REQUESTS_PER_MIN
+            limit = 3
+            # Exhaust key A
+            for _ in range(limit):
+                _check_rate_limit("key_A", limit)
+            allowed_a, _, _ = _check_rate_limit("key_A", limit)
+            assert allowed_a is False
+            # Key B should still work
+            allowed_b, _, _ = _check_rate_limit("key_B", limit)
+            assert allowed_b is True
 
 
 class TestGetDailyUsage:

@@ -7,9 +7,7 @@ import re
 from datetime import datetime, timezone
 from flask import Response, jsonify, request
 from flask_login import login_required, current_user
-from sqlalchemy import text
 
-from app import db
 from app.models import Thread, Message
 from app.chat import chat_bp
 
@@ -18,23 +16,24 @@ EXPORT_RATE_LIMIT = 10   # max exports per hour
 EXPORT_RATE_WINDOW = 3600  # seconds
 
 
+import time as _time
+
+# In-process export rate tracking (per-worker, sufficient for this use case)
+_export_timestamps: dict[int, list[float]] = {}
+
+
 def _check_export_rate(user_id):
     """Check if user has exceeded export rate limit. Returns (allowed, count)."""
-    result = db.session.execute(text(
-        "SELECT COUNT(*) FROM rate_limit_bucket "
-        "WHERE user_id = :uid AND endpoint = 'export' "
-        "AND created_at > NOW() - INTERVAL '1 hour'"
-    ), {"uid": user_id}).scalar()
-    return result < EXPORT_RATE_LIMIT, result
+    now = _time.time()
+    attempts = _export_timestamps.get(user_id, [])
+    attempts = [t for t in attempts if now - t < EXPORT_RATE_WINDOW]
+    _export_timestamps[user_id] = attempts
+    return len(attempts) < EXPORT_RATE_LIMIT, len(attempts)
 
 
 def _record_export(user_id):
     """Record an export attempt."""
-    db.session.execute(text(
-        "INSERT INTO rate_limit_bucket (user_id, endpoint, created_at) "
-        "VALUES (:uid, 'export', NOW())"
-    ), {"uid": user_id})
-    db.session.commit()
+    _export_timestamps.setdefault(user_id, []).append(_time.time())
 
 
 def _extract_text(content):

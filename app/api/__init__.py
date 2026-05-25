@@ -36,57 +36,9 @@ DAILY_TOKEN_CAP = 100_000_000
 
 
 def _check_rate_limit(key_hash, limit, window=60):
-    """PostgreSQL-backed token bucket rate limiter. Consistent across all workers."""
-    now = time.time()
-    refill_rate = limit / window  # tokens per second
-
-    # Atomic row lock ensures consistency across workers
-    row = db.session.execute(
-        db.text(
-            "SELECT tokens, last_refill FROM rate_limit_bucket "
-            "WHERE key_hash = :kh FOR UPDATE"
-        ),
-        {"kh": key_hash},
-    ).fetchone()
-
-    if row is None:
-        db.session.execute(
-            db.text(
-                "INSERT INTO rate_limit_bucket (key_hash, tokens, last_refill) "
-                "VALUES (:kh, :tokens, :now)"
-            ),
-            {"kh": key_hash, "tokens": float(limit) - 1.0, "now": now},
-        )
-        db.session.commit()
-        return True, limit - 1, 0
-
-    tokens, last_refill = row[0], row[1]
-    elapsed = now - last_refill
-    tokens = min(float(limit), tokens + elapsed * refill_rate)
-
-    if tokens >= 1.0:
-        tokens -= 1.0
-        db.session.execute(
-            db.text(
-                "UPDATE rate_limit_bucket SET tokens = :tokens, last_refill = :now "
-                "WHERE key_hash = :kh"
-            ),
-            {"tokens": tokens, "now": now, "kh": key_hash},
-        )
-        db.session.commit()
-        return True, int(tokens), 0
-    else:
-        retry_after = int((1.0 - tokens) / refill_rate) + 1
-        db.session.execute(
-            db.text(
-                "UPDATE rate_limit_bucket SET tokens = :tokens, last_refill = :now "
-                "WHERE key_hash = :kh"
-            ),
-            {"tokens": tokens, "now": now, "kh": key_hash},
-        )
-        db.session.commit()
-        return False, 0, retry_after
-
+    """SQLAlchemy-backed token bucket rate limiter. Works with SQLite and PostgreSQL."""
+    from app.models import RateLimitBucket
+    return RateLimitBucket.check_and_consume(key_hash, limit, window)
 
 def _get_daily_usage(api_key_id):
     """Get total tokens used today for an API key."""
