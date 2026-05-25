@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timezone
 from app import db, login_manager
@@ -53,10 +54,27 @@ class Thread(db.Model):
 
     messages = db.relationship("Message", backref="thread", lazy=True, cascade="all, delete-orphan")
 
+    @staticmethod
+    def _extract_text(content):
+        """Extract human-readable text from content, handling multimodal JSON arrays."""
+        if not content:
+            return ""
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                parts = [p.get("text", "") for p in parsed if p.get("type") == "text" and p.get("text")]
+                return " ".join(parts)
+            elif isinstance(parsed, dict):
+                return parsed.get("text", content)
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+        return content
+
     def update_title(self):
         first = Message.query.filter_by(thread_id=self.id).order_by(Message.created_at).first()
         if first and first.role == "user":
-            self.title = first.content[:50] + ("..." if len(first.content) > 50 else "")
+            text = self._extract_text(first.content)
+            self.title = text[:50] + ("..." if len(text) > 50 else "") or "New Chat"
 
 
 class Message(db.Model):
