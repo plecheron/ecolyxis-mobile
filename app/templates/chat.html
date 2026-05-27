@@ -278,7 +278,6 @@ function onModeChange() {
         pendingImages = [];
         renderImagePreviews();
     }
-}
 
     // Update placeholder based on mode
     var placeholder = 'Type your message...';
@@ -288,6 +287,7 @@ function onModeChange() {
     else if (mode === 'vision') placeholder = 'Ask about the attached image...';
     chatInput.placeholder = placeholder;
 }
+
 
 document.getElementById('model-select').addEventListener('change', onModeChange);
 onModeChange();
