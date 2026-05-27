@@ -55,6 +55,9 @@ def _save_remote_image(remote_url):
 GENERATION_JOBS = {}
 GENERATION_JOBS_LOCK = threading.Lock()
 
+EDIT_JOBS = {}
+EDIT_JOBS_LOCK = threading.Lock()
+
 
 def _run_generation(app, user_id, thread_id, prompt, width, height, seed, job_id, image_url):
     """Run image generation in a background thread — always saves result to DB."""
@@ -662,6 +665,83 @@ def _run_upscale_bg(app, user_id, thread_id, prompt, seed, next_size, parent_id,
 
 # ─── Image editing (Step1X-Edit) ─────────────────────────────────────────────
 
+def _run_edit(app, user_id, thread_id, image_b64, prompt, size, steps, cfg, seed, job_id, edit_url, source_image_id):
+    """Run image edit in a background thread — always saves result to DB."""
+    with app.app_context():
+        try:
+            with EDIT_JOBS_LOCK:
+                EDIT_JOBS[job_id]["status"] = "running"
+
+            resp = req_lib.post(
+                f"{edit_url}/edit-json",
+                json={"image": image_b64, "prompt": prompt, "size": size, "steps": steps, "cfg": cfg, "seed": seed},
+                timeout=3600,
+            )
+
+            if resp.status_code != 200:
+                err_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                error_msg = err_data.get("error", f"Edit failed: HTTP {resp.status_code}")
+                with EDIT_JOBS_LOCK:
+                    EDIT_JOBS[job_id].update({"status": "error", "error": error_msg})
+                return
+
+            result = resp.json()
+            remote_filename = result.get("url", "").split("/")[-1]
+            elapsed = result.get("elapsed_seconds", 0)
+
+            # Fetch and save the edited image locally
+            local_name, _ = _save_remote_image(f"{edit_url}/outputs/{remote_filename}")
+
+            # Create DB record
+            img_record = GeneratedImage(
+                user_id=user_id,
+                thread_id=thread_id,
+                prompt=f"[edit] {prompt[:200]}",
+                seed=seed if seed >= 0 else 0,
+                width=size,
+                height=size,
+                filename=local_name,
+                parent_id=source_image_id,
+            )
+            db.session.add(img_record)
+            db.session.flush()
+
+            # Save assistant message
+            msg_content = json.dumps([
+                {"type": "text", "text": f"Edited image: {prompt[:100]}"},
+                {"type": "image", "file": local_name, "name": local_name,
+                 "image_id": img_record.id, "seed": seed if seed >= 0 else 0,
+                 "width": size, "height": size},
+            ])
+            msg = Message(
+                thread_id=thread_id,
+                role="assistant",
+                content=msg_content,
+                tokens_used=0,
+                message_type="mixed",
+            )
+            db.session.add(msg)
+            img_record.message_id = msg.id
+            db.session.commit()
+
+            with EDIT_JOBS_LOCK:
+                EDIT_JOBS[job_id].update({
+                    "status": "done",
+                    "url": f"/uploads/{local_name}",
+                    "filename": local_name,
+                    "image_id": img_record.id,
+                    "elapsed_seconds": elapsed,
+                })
+
+        except Exception as e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            with EDIT_JOBS_LOCK:
+                EDIT_JOBS[job_id].update({"status": "error", "error": str(e)})
+
+
 def _get_edit_url():
     """Return the configured image editing backend URL."""
     url = current_app.config.get("EDIT_URL")
@@ -729,78 +809,54 @@ def edit_image_endpoint(thread_id):
     cfg = float(data.get("cfg", 6.0))
     seed = int(data.get("seed", -1))
 
-    def stream_edit():
-        import time as _time
-        try:
-            yield "data: " + json.dumps({"stage": "editing", "message": "Editing image..."}) + "\n\n"
+    # Start background edit — runs independently of client connection
+    job_id = uuid.uuid4().hex[:12]
+    with EDIT_JOBS_LOCK:
+        EDIT_JOBS[job_id] = {
+            "status": "pending",
+            "type": "edit",
+            "prompt": prompt,
+        }
 
-            resp = req_lib.post(
-                f"{edit_url}/edit-json",
-                json={"image": image_b64, "prompt": prompt, "size": size, "steps": steps, "cfg": cfg, "seed": seed},
-                timeout=3600,
-            )
+    t = threading.Thread(
+        target=_run_edit,
+        args=(_app, _edit_user_id, thread_id, image_b64, prompt, size, steps, cfg, seed, job_id, edit_url, _source_image_id),
+        daemon=True,
+    )
+    t.start()
 
-            if resp.status_code != 200:
-                err_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                error_msg = err_data.get("error", f"Edit failed: HTTP {resp.status_code}")
-                yield "data: " + json.dumps({"error": error_msg}) + "\n\n"
-                return
+    # SSE stream polls the background job — client can disconnect safely
+    import time as _time
+    def stream_edit_status():
+        last_status = None
+        while True:
+            with EDIT_JOBS_LOCK:
+                job = EDIT_JOBS.get(job_id, {})
+            status = job.get("status", "pending")
 
-            result = resp.json()
-            remote_filename = result.get("url", "").split("/")[-1]
-            elapsed = result.get("elapsed_seconds", 0)
+            if status != last_status:
+                if status == "running":
+                    yield "data: " + json.dumps({"stage": "editing", "message": "Editing image..."}) + "\n\n"
+                elif status == "done":
+                    yield "data: " + json.dumps({
+                        "stage": "done",
+                        "url": job.get("url", ""),
+                        "filename": job.get("filename", ""),
+                        "image_id": job.get("image_id"),
+                        "elapsed_seconds": job.get("elapsed_seconds", 0),
+                    }) + "\n\n"
+                    break
+                elif status == "error":
+                    yield "data: " + json.dumps({"error": job.get("error", "Unknown error")}) + "\n\n"
+                    break
+                last_status = status
 
-            # DB operations need app context in streaming response
-            with _app.app_context():
-                # Fetch and save the edited image locally
-                local_name, _ = _save_remote_image(f"{edit_url}/outputs/{remote_filename}")
+            _time.sleep(1)
 
-                # Create DB record — reuse GeneratedImage with parent_id linking to source
-                img_record = GeneratedImage(
-                user_id=_edit_user_id,
-                thread_id=thread_id,
-                prompt=f"[edit] {prompt[:200]}",
-                seed=seed if seed >= 0 else 0,
-                width=size,
-                height=size,
-                filename=local_name,
-                parent_id=_source_image_id,
-                )
-                db.session.add(img_record)
-                db.session.flush()
+        # Clean up completed job after a short delay
+        _time.sleep(5)
+        with EDIT_JOBS_LOCK:
+            EDIT_JOBS.pop(job_id, None)
 
-                # Save assistant message
-                msg_content = json.dumps([
-                {"type": "text", "text": f"Edited image: {prompt[:100]}"},
-                {"type": "image", "file": local_name, "name": local_name,
-                 "image_id": img_record.id, "seed": seed if seed >= 0 else 0,
-                 "width": size, "height": size},
-                ])
-                msg = Message(
-                thread_id=thread_id,
-                role="assistant",
-                content=msg_content,
-                tokens_used=0,
-                message_type="mixed",
-                )
-                db.session.add(msg)
-                img_record.message_id = msg.id
-                db.session.commit()
-
-                yield "data: " + json.dumps({
-                    "stage": "done",
-                    "url": f"/uploads/{local_name}",
-                    "filename": local_name,
-                    "image_id": img_record.id,
-                    "elapsed_seconds": elapsed,
-                }) + "\n\n"
-
-        except Exception as e:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            yield "data: " + json.dumps({"error": str(e)}) + "\n\n"
-
-    return Response(stream_edit(), mimetype="text/event-stream",
+    return Response(stream_edit_status(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
