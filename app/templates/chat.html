@@ -88,6 +88,7 @@
                 </optgroup>
                 <optgroup label="🎨 Media">
                     <option value="image">🖼️ Image Generation</option>
+                    <option value="edit">✏️ Image Editing</option>
                     <option value="video">🎬 Video Generation</option>
                     {% if rate_info.is_premium %}<option value="vision">👁️ Vision — Image understanding</option>{% endif %}
                 </optgroup>
@@ -238,7 +239,7 @@ function highlightExistingMessages() {
     });
 }
 
-var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536};
+var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536, edit: 65536};
 
 function getSelectedMode() { return document.getElementById('model-select').value; }
 
@@ -266,12 +267,26 @@ function onModeChange() {
     updateContextWheel();
     var mode = getSelectedMode();
     var attachBtn = document.querySelector('.btn-attach');
-    if (attachBtn) attachBtn.style.display = (mode === 'vision') ? '' : 'none';
+    if (attachBtn) attachBtn.style.display = (mode === 'vision' || mode === 'edit') ? '' : 'none';
     // Clear pending images if switching away from vision
-    if (mode !== 'vision' && pendingImages.length > 0) {
+    // In edit mode, only allow 1 image
+    if (mode === 'edit' && pendingImages.length > 1) {
+        pendingImages = [pendingImages[0]];
+        renderImagePreviews();
+    }
+    if (mode !== 'vision' && mode !== 'edit' && pendingImages.length > 0) {
         pendingImages = [];
         renderImagePreviews();
     }
+}
+
+    // Update placeholder based on mode
+    var placeholder = 'Type your message...';
+    if (mode === 'image') placeholder = 'Describe the image to generate...';
+    else if (mode === 'edit') placeholder = 'Describe how to edit the image...';
+    else if (mode === 'video') placeholder = 'Describe the video to generate...';
+    else if (mode === 'vision') placeholder = 'Ask about the attached image...';
+    chatInput.placeholder = placeholder;
 }
 
 document.getElementById('model-select').addEventListener('change', onModeChange);
@@ -816,6 +831,98 @@ async function sendMessage(e) {
         } catch (err) {
             removeThinking();
             addMessage("assistant", "\u26a0\ufe0f Image generation failed: " + err.message);
+        }
+        isStreaming = false;
+        sendBtn.disabled = false;
+        scrollToBottom();
+        return;
+    }
+
+    // Image editing mode (send source image + instruction to step1x-edit)
+    if (selectedMode === 'edit') {
+        removeThinking();
+        if (imagesToSend.length === 0) {
+            addMessage("assistant", "\u26a0\ufe0f Please attach an image to edit.");
+            isStreaming = false;
+            sendBtn.disabled = false;
+            return;
+        }
+        try {
+            showThinking();
+            var thinkingMsg = document.getElementById("thinking-msg");
+            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
+            if (indicator) {
+                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="edit-progress-fill"></div></div><div class="gen-progress-text"><span id="edit-progress-label">Editing image...</span><span id="edit-progress-eta"></span></div></div>';
+            }
+
+            var editStartTime = performance.now();
+
+            // Strip data URL prefix to get raw base64
+            var rawBase64 = imagesToSend[0].dataUrl;
+            var base64Data = rawBase64.split(',')[1] || rawBase64;
+
+            const editResp = await fetch("/chat/" + threadId + "/edit-image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64Data, prompt: content })
+            });
+
+            const editReader = editResp.body.getReader();
+            const editDecoder = new TextDecoder();
+            var editBuffer = '';
+            var editDone = false;
+
+            while (!editDone) {
+                const { done, value } = await editReader.read();
+                if (done) { editDone = true; }
+                editBuffer += editDecoder.decode(value, { stream: true });
+                var editLines = editBuffer.split('\n');
+                editBuffer = editLines.pop();
+
+                for (var ei = 0; ei < editLines.length; ei++) {
+                    var eline = editLines[ei].trim();
+                    if (!eline.startsWith('data: ')) continue;
+                    try {
+                        var eevent = JSON.parse(eline.substring(6));
+                    } catch (e) { continue; }
+
+                    if (eevent.error) {
+                        removeThinking();
+                        addMessage("assistant", "\u26a0\ufe0f " + eevent.error);
+                        editDone = true;
+                        break;
+                    }
+
+                    if (eevent.stage === 'editing') {
+                        var editLabel = document.getElementById('edit-progress-label');
+                        if (editLabel) editLabel.textContent = 'Applying edit...';
+                        var editFill = document.getElementById('edit-progress-fill');
+                        if (editFill) editFill.style.width = '30%';
+                    } else if (eevent.stage === 'done' && eevent.url) {
+                        var editFill2 = document.getElementById('edit-progress-fill');
+                        if (editFill2) editFill2.style.width = '100%';
+                        removeThinking();
+                        var editAssistantDiv = addMessage("assistant", "");
+                        var editMsgText = editAssistantDiv.querySelector('.message-text');
+                        var editWrapper = document.createElement('div');
+                        editWrapper.className = 'generated-image-wrapper';
+                        editWrapper.setAttribute('data-image-id', eevent.image_id || '');
+                        var editImgEl = document.createElement('img');
+                        editImgEl.src = eevent.url;
+                        editImgEl.className = 'generated-image';
+                        editImgEl.style.maxWidth = '100%';
+                        editImgEl.style.borderRadius = '8px';
+                        editImgEl.style.marginTop = '8px';
+                        editImgEl.style.cursor = 'pointer';
+                        editWrapper.appendChild(editImgEl);
+                        editMsgText.appendChild(editWrapper);
+                        editDone = true;
+                    }
+                }
+            }
+        } catch (err) {
+            removeThinking();
+            addMessage("assistant", "\u26a0\ufe0f Image editing failed: " + err.message);
         }
         isStreaming = false;
         sendBtn.disabled = false;

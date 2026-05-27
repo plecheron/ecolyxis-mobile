@@ -657,3 +657,150 @@ def _run_upscale_bg(app, user_id, thread_id, prompt, seed, next_size, parent_id,
     except Exception as e:
         with GENERATION_JOBS_LOCK:
             GENERATION_JOBS[job_id].update({"status": "error", "error": str(e)})
+
+
+
+# ─── Image editing (Step1X-Edit) ─────────────────────────────────────────────
+
+def _get_edit_url():
+    """Return the configured image editing backend URL."""
+    url = current_app.config.get("EDIT_URL")
+    if not url:
+        return None
+    return url.rstrip("/")
+
+
+@chat_bp.route("/chat/<string:thread_id>/edit-image", methods=["POST"])
+@login_required
+def edit_image_endpoint(thread_id):
+    """Edit an image using Step1X-Edit.
+
+    Accepts a JSON body with:
+      - image: base64-encoded source image (required)
+      - prompt: text edit instruction (required)
+      - source_image_id: ID of a GeneratedImage to track lineage (optional)
+      - size: output size, one of [512, 768, 1024] (default 512)
+      - steps: inference steps (default 28)
+      - cfg: CFG scale (default 6.0)
+      - seed: reproducibility seed (default -1 = random)
+
+    Returns the edited image as an SSE stream with progress, or a JSON error.
+    """
+    Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+
+    allowed, _, limit = check_rate_limit()
+    if not allowed:
+        err = json.dumps({"error": "rate_limited", "message": f"Free tier limit reached ({limit} messages per hour)."})
+        def err_stream():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream(), mimetype="text/event-stream")
+
+    data = request.get_json()
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        err = json.dumps({"error": "Edit instruction required"})
+        def err_stream2():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream2(), mimetype="text/event-stream")
+
+    image_b64 = data.get("image", "")
+    if not image_b64:
+        err = json.dumps({"error": "Source image required"})
+        def err_stream3():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream3(), mimetype="text/event-stream")
+
+    edit_url = _get_edit_url()
+    if not edit_url:
+        err = json.dumps({"error": "Image editing is not configured on this server."})
+        def err_stream4():
+            yield "data: " + err + "\n\n"
+        return Response(err_stream4(), mimetype="text/event-stream")
+
+    _ensure_upload_dir()
+    _edit_user_id = current_user.id
+    _app = current_app._get_current_object()
+    _source_image_id = data.get("source_image_id")
+
+    # Edit doesn't stream progress from step1x-edit (it's a single request),
+    # so we stream our own progress indicator while waiting.
+    size = int(data.get("size", 512))
+    steps = int(data.get("steps", 8))
+    cfg = float(data.get("cfg", 6.0))
+    seed = int(data.get("seed", -1))
+
+    def stream_edit():
+        import time as _time
+        try:
+            yield "data: " + json.dumps({"stage": "editing", "message": "Editing image..."}) + "\n\n"
+
+            resp = req_lib.post(
+                f"{edit_url}/edit-json",
+                json={"image": image_b64, "prompt": prompt, "size": size, "steps": steps, "cfg": cfg, "seed": seed},
+                timeout=3600,
+            )
+
+            if resp.status_code != 200:
+                err_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                error_msg = err_data.get("error", f"Edit failed: HTTP {resp.status_code}")
+                yield "data: " + json.dumps({"error": error_msg}) + "\n\n"
+                return
+
+            result = resp.json()
+            remote_filename = result.get("url", "").split("/")[-1]
+            elapsed = result.get("elapsed_seconds", 0)
+
+            # DB operations need app context in streaming response
+            with _app.app_context():
+                # Fetch and save the edited image locally
+                local_name, _ = _save_remote_image(f"{edit_url}/outputs/{remote_filename}")
+
+                # Create DB record — reuse GeneratedImage with parent_id linking to source
+                img_record = GeneratedImage(
+                user_id=_edit_user_id,
+                thread_id=thread_id,
+                prompt=f"[edit] {prompt[:200]}",
+                seed=seed if seed >= 0 else 0,
+                width=size,
+                height=size,
+                filename=local_name,
+                parent_id=_source_image_id,
+                )
+                db.session.add(img_record)
+                db.session.flush()
+
+                # Save assistant message
+                msg_content = json.dumps([
+                {"type": "text", "text": f"Edited image: {prompt[:100]}"},
+                {"type": "image", "file": local_name, "name": local_name,
+                 "image_id": img_record.id, "seed": seed if seed >= 0 else 0,
+                 "width": size, "height": size},
+                ])
+                msg = Message(
+                thread_id=thread_id,
+                role="assistant",
+                content=msg_content,
+                tokens_used=0,
+                message_type="mixed",
+                )
+                db.session.add(msg)
+                img_record.message_id = msg.id
+                db.session.commit()
+
+                yield "data: " + json.dumps({
+                    "stage": "done",
+                    "url": f"/uploads/{local_name}",
+                    "filename": local_name,
+                    "image_id": img_record.id,
+                    "elapsed_seconds": elapsed,
+                }) + "\n\n"
+
+        except Exception as e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            yield "data: " + json.dumps({"error": str(e)}) + "\n\n"
+
+    return Response(stream_edit(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
