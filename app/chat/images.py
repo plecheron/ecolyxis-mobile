@@ -805,7 +805,7 @@ def edit_image_endpoint(thread_id):
     # Edit doesn't stream progress from step1x-edit (it's a single request),
     # so we stream our own progress indicator while waiting.
     size = int(data.get("size", 512))
-    steps = int(data.get("steps", 8))
+    steps = int(data.get("steps", 4))
     cfg = float(data.get("cfg", 6.0))
     seed = int(data.get("seed", -1))
 
