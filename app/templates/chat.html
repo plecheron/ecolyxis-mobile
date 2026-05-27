@@ -886,7 +886,11 @@ async function sendMessage(e) {
                         var eevent = JSON.parse(eline.substring(6));
                     } catch (e) { continue; }
 
+                    if (eevent.job_id) {
+                        localStorage.setItem('ecolyxis_edit', JSON.stringify({threadId: threadId, jobId: eevent.job_id}));
+                    }
                     if (eevent.error) {
+                        localStorage.removeItem('ecolyxis_edit');
                         removeThinking();
                         addMessage("assistant", "\u26a0\ufe0f " + eevent.error);
                         editDone = true;
@@ -899,6 +903,7 @@ async function sendMessage(e) {
                         var editFill = document.getElementById('edit-progress-fill');
                         if (editFill) editFill.style.width = '30%';
                     } else if (eevent.stage === 'done' && eevent.url) {
+                        localStorage.removeItem('ecolyxis_edit');
                         var editFill2 = document.getElementById('edit-progress-fill');
                         if (editFill2) editFill2.style.width = '100%';
                         removeThinking();
@@ -921,8 +926,18 @@ async function sendMessage(e) {
                 }
             }
         } catch (err) {
-            removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Image editing failed: " + err.message);
+            // Don't clear localStorage — background thread is still running
+            // User can refresh to reconnect to the edit status
+            var savedEdit = localStorage.getItem('ecolyxis_edit');
+            if (savedEdit && err.message === 'Failed to fetch') {
+                // Connection lost but edit continues in background
+                removeThinking();
+                addMessage("assistant", "\u23f3 Edit still processing in the background. Refresh the page to check progress.");
+            } else {
+                localStorage.removeItem('ecolyxis_edit');
+                removeThinking();
+                addMessage("assistant", "\u26a0\ufe0f Image editing failed: " + err.message);
+            }
         }
         isStreaming = false;
         sendBtn.disabled = false;
@@ -1808,5 +1823,103 @@ function exportChat(fmt) {
     if (!tid) { alert('No conversation to export'); return; }
     window.location.href = '/chat/' + tid + '/export/' + fmt;
 }
+
+// ─── Edit reconnect: resume live progress after disconnect ─────────────────
+function reconnectToEdit(tid, jid) {
+    showThinking();
+    var thinkingMsg = document.getElementById("thinking-msg");
+    var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
+    if (indicator) {
+        indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="edit-progress-fill" style="width:30%"></div></div><div class="gen-progress-text"><span id="edit-progress-label">Reconnecting to edit...</span><span id="edit-progress-eta"></span></div></div>';
+    }
+
+    fetch("/chat/" + tid + "/edit-status/" + jid).then(function(resp) {
+        if (!resp.ok) throw new Error("Status " + resp.status);
+        var reader = resp.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+
+        function read() {
+            reader.read().then(function(result) {
+                if (result.done) { finish(); return; }
+                buffer += decoder.decode(result.value, {stream: true});
+                var lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (!line.startsWith('data: ')) continue;
+                    try { var ev = JSON.parse(line.substring(6)); } catch(e) { continue; }
+
+                    if (ev.error) {
+                        localStorage.removeItem('ecolyxis_edit');
+                        removeThinking();
+                        addMessage("assistant", "\u26a0\ufe0f " + ev.error);
+                        return;
+                    }
+                    if (ev.stage === 'editing') {
+                        var lbl = document.getElementById('edit-progress-label');
+                        if (lbl) lbl.textContent = ev.message || 'Editing image...';
+                        var fill = document.getElementById('edit-progress-fill');
+                        if (fill) fill.style.width = '30%';
+                    } else if (ev.stage === 'done') {
+                        localStorage.removeItem('ecolyxis_edit');
+                        var fill2 = document.getElementById('edit-progress-fill');
+                        if (fill2) fill2.style.width = '100%';
+                        removeThinking();
+                        if (ev.url) {
+                            var div = addMessage("assistant", "");
+                            var txt = div.querySelector('.message-text');
+                            var wrap = document.createElement('div');
+                            wrap.className = 'generated-image-wrapper';
+                            wrap.setAttribute('data-image-id', ev.image_id || '');
+                            var img = document.createElement('img');
+                            img.src = ev.url;
+                            img.className = 'generated-image';
+                            img.style.maxWidth = '100%';
+                            img.style.borderRadius = '8px';
+                            img.style.marginTop = '8px';
+                            img.style.cursor = 'pointer';
+                            wrap.appendChild(img);
+                            txt.appendChild(wrap);
+                        } else {
+                            // Already completed while away — reload messages
+                            addMessage("assistant", "✅ Edit completed while you were away. Refreshing...");
+                            setTimeout(function() { location.reload(); }, 1500);
+                        }
+                        return;
+                    }
+                }
+                read();
+            }).catch(function() {
+                // Connection lost again — keep localStorage for another reconnect
+                removeThinking();
+                addMessage("assistant", "\u23f3 Connection lost. Edit still running — refresh to reconnect.");
+            });
+        }
+        read();
+    }).catch(function(err) {
+        localStorage.removeItem('ecolyxis_edit');
+        removeThinking();
+        addMessage("assistant", "\u26a0\ufe0f Could not reconnect to edit: " + err.message);
+    });
+}
+
+// Auto-reconnect on page load if there's a pending edit
+(function() {
+    try {
+        var saved = localStorage.getItem('ecolyxis_edit');
+        if (saved) {
+            var edit = JSON.parse(saved);
+            if (edit.threadId === threadId && edit.jobId) {
+                reconnectToEdit(edit.threadId, edit.jobId);
+            } else {
+                localStorage.removeItem('ecolyxis_edit');
+            }
+        }
+    } catch(e) {
+        localStorage.removeItem('ecolyxis_edit');
+    }
+})();
 </script>
 {% endblock %}

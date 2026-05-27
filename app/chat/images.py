@@ -835,8 +835,10 @@ def edit_image_endpoint(thread_id):
             status = job.get("status", "pending")
 
             if status != last_status:
-                if status == "running":
-                    yield "data: " + json.dumps({"stage": "editing", "message": "Editing image..."}) + "\n\n"
+                if status == "pending":
+                    yield "data: " + json.dumps({"stage": "editing", "message": "Queuing edit...", "job_id": job_id}) + "\n\n"
+                elif status == "running":
+                    yield "data: " + json.dumps({"stage": "editing", "message": "Editing image...", "job_id": job_id}) + "\n\n"
                 elif status == "done":
                     yield "data: " + json.dumps({
                         "stage": "done",
@@ -859,4 +861,57 @@ def edit_image_endpoint(thread_id):
             EDIT_JOBS.pop(job_id, None)
 
     return Response(stream_edit_status(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@chat_bp.route("/chat/<string:thread_id>/edit-status/<job_id>", methods=["GET"])
+@login_required
+def edit_status(thread_id, job_id):
+    """SSE stream that reconnects to an in-progress edit job.
+
+    Returns the same SSE events as the edit endpoint. Used when the client
+    reconnects after a disconnect (screen lock, tab refresh, etc).
+    """
+    Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+
+    import time as _time
+
+    def stream_reconnect():
+        last_status = None
+        while True:
+            with EDIT_JOBS_LOCK:
+                job = EDIT_JOBS.get(job_id)
+            if job is None:
+                # Job already cleaned up — must have completed. Check DB for result.
+                yield "data: " + json.dumps({"stage": "done", "reconnected": True, "message": "Edit already completed — refresh to see result."}) + "\n\n"
+                break
+
+            status = job.get("status", "pending")
+            if status != last_status:
+                if status == "pending":
+                    yield "data: " + json.dumps({"stage": "editing", "message": "Edit queued..."}) + "\n\n"
+                elif status == "running":
+                    yield "data: " + json.dumps({"stage": "editing", "message": "Editing image..."}) + "\n\n"
+                elif status == "done":
+                    yield "data: " + json.dumps({
+                        "stage": "done",
+                        "url": job.get("url", ""),
+                        "filename": job.get("filename", ""),
+                        "image_id": job.get("image_id"),
+                        "elapsed_seconds": job.get("elapsed_seconds", 0),
+                    }) + "\n\n"
+                    # Clean up
+                    _time.sleep(5)
+                    with EDIT_JOBS_LOCK:
+                        EDIT_JOBS.pop(job_id, None)
+                    break
+                elif status == "error":
+                    yield "data: " + json.dumps({"error": job.get("error", "Unknown error")}) + "\n\n"
+                    with EDIT_JOBS_LOCK:
+                        EDIT_JOBS.pop(job_id, None)
+                    break
+                last_status = status
+            _time.sleep(1)
+
+    return Response(stream_reconnect(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
