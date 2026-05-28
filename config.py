@@ -43,3 +43,4 @@ class Config:
     HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://192.168.122.5:8083")
     WAN22_URL = os.environ.get("WAN22_URL", "http://192.168.122.5:8085")
     EDIT_URL = os.environ.get("EDIT_URL", "http://192.168.122.5:8087")
+    LANCE_URL = os.environ.get("LANCE_URL", "http://192.168.122.5:8091")
