@@ -90,11 +90,6 @@
                     <option value="image">🖼️ Image Generation</option>
                     <option value="edit">✏️ Image Editing</option>
                     <option value="video">🎬 Video Generation</option>
-                <optgroup label="🚀 Lance (ByteDance)">
-                    <option value="lance-t2i">🎨 Lance — Text to Image</option>
-                    <option value="lance-i2i">🔄 Lance — Image to Image</option>
-                    <option value="lance-i2v">🎥 Lance — Image to Video</option>
-                </optgroup>
                     {% if rate_info.is_premium %}<option value="vision">👁️ Vision — Image understanding</option>{% endif %}
                 </optgroup>
             </select>
@@ -244,7 +239,7 @@ function highlightExistingMessages() {
     });
 }
 
-var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536, edit: 65536, "lance-t2i": 65536, "lance-i2i": 65536, "lance-i2v": 65536};
+var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536, edit: 65536};
 
 function getSelectedMode() { return document.getElementById('model-select').value; }
 
@@ -272,14 +267,14 @@ function onModeChange() {
     updateContextWheel();
     var mode = getSelectedMode();
     var attachBtn = document.querySelector('.btn-attach');
-    if (attachBtn) attachBtn.style.display = (mode === 'vision' || mode === 'edit' || mode === 'lance-i2i' || mode === 'lance-i2v') ? '' : 'none';
+    if (attachBtn) attachBtn.style.display = (mode === 'vision' || mode === 'edit' ) ? '' : 'none';
     // Clear pending images if switching away from vision
     // In edit mode, only allow 1 image
-    if ((mode === 'edit' || mode === 'lance-i2i' || mode === 'lance-i2v') && pendingImages.length > 1) {
+    if ((mode === 'edit' ) && pendingImages.length > 1) {
         pendingImages = [pendingImages[0]];
         renderImagePreviews();
     }
-    if (mode !== 'vision' && mode !== 'edit' && mode !== 'lance-i2i' && mode !== 'lance-i2v' && pendingImages.length > 0) {
+    if (mode !== 'vision' && mode !== 'edit'  && pendingImages.length > 0) {
         pendingImages = [];
         renderImagePreviews();
     }
@@ -289,11 +284,7 @@ function onModeChange() {
     if (mode === 'image') placeholder = 'Describe the image to generate...';
     else if (mode === 'edit') placeholder = 'Describe how to edit the image...';
     else if (mode === 'video') placeholder = 'Describe the video to generate...';
-    else if (mode === 'vision') placeholder = 'Ask about the attached image...';
-    else if (mode === 'lance-t2i') placeholder = 'Describe the image to generate...';
-    else if (mode === 'lance-i2i') placeholder = 'Describe how to transform the attached image...';
-    else if (mode === 'lance-i2v') placeholder = 'Describe how to animate the attached image...';
-    chatInput.placeholder = placeholder;
+    else if (mode === 'vision') placeholder = 'Ask about the attached image...';    chatInput.placeholder = placeholder;
 }
 
 
@@ -1041,273 +1032,6 @@ async function sendMessage(e) {
         } catch (err) {
             removeThinking();
             addMessage("assistant", "\u26a0\ufe0f Video generation failed: " + err.message);
-        }
-        isStreaming = false;
-        sendBtn.disabled = false;
-        scrollToBottom();
-        return;
-    }
-
-
-    // ─── Lance Text-to-Image ──────────────────────────────────────────────
-    if (selectedMode === 'lance-t2i') {
-        removeThinking();
-        try {
-            showThinking();
-            var thinkingMsg = document.getElementById("thinking-msg");
-            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
-            if (indicator) {
-                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="lance-t2i-fill"></div></div><div class="gen-progress-text"><span id="lance-t2i-label">Starting Lance generation...</span><span id="lance-t2i-eta"></span></div></div>';
-            }
-
-            const t2iResp = await fetch("/chat/" + threadId + "/lance-t2i", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: content, width: 1024, height: 1024 })
-            });
-
-            const t2iReader = t2iResp.body.getReader();
-            const t2iDecoder = new TextDecoder();
-            var t2iBuffer = '';
-            var t2iDone = false;
-            var t2iData = null;
-
-            while (!t2iDone) {
-                const { done, value } = await t2iReader.read();
-                if (done) { t2iDone = true; }
-                t2iBuffer += t2iDecoder.decode(value, { stream: true });
-                var t2iLines = t2iBuffer.split('\n');
-                t2iBuffer = t2iLines.pop();
-
-                for (var ti = 0; ti < t2iLines.length; ti++) {
-                    var tline = t2iLines[ti].trim();
-                    if (!tline.startsWith('data: ')) continue;
-                    try { var tevent = JSON.parse(tline.substring(6)); } catch (e) { continue; }
-
-                    if (tevent.error) {
-                        removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + tevent.error);
-                        t2iDone = true; break;
-                    }
-
-                    var t2iFill = document.getElementById('lance-t2i-fill');
-                    var t2iLabel = document.getElementById('lance-t2i-label');
-                    if (tevent.stage === 'loading' && t2iLabel) t2iLabel.textContent = 'Loading Lance model...';
-                    else if (tevent.stage === 'encoding' && t2iLabel) { t2iLabel.textContent = 'Encoding prompt...'; if (t2iFill) t2iFill.style.width = '10%'; }
-                    else if (tevent.stage === 'diffusion' || tevent.stage === 'sampling') {
-                        var step = tevent.step || 0;
-                        var total = tevent.total_steps || 20;
-                        var pct = Math.round(10 + (step / total) * 80);
-                        if (t2iFill) t2iFill.style.width = pct + '%';
-                        if (t2iLabel) t2iLabel.textContent = 'Generating... step ' + step + '/' + total;
-                    }
-                    else if (tevent.stage === 'decoding' && t2iLabel) { t2iLabel.textContent = 'Decoding image...'; if (t2iFill) t2iFill.style.width = '95%'; }
-                    else if (tevent.stage === 'done' && tevent.url) {
-                        if (t2iFill) t2iFill.style.width = '100%';
-                        t2iData = tevent;
-                    }
-                }
-            }
-
-            if (t2iData && t2iData.url) {
-                removeThinking();
-                var t2iDiv = addMessage("assistant", "");
-                var t2iText = t2iDiv.querySelector('.message-text');
-                var t2iWrap = document.createElement('div');
-                t2iWrap.className = 'generated-image-wrapper';
-                t2iWrap.setAttribute('data-image-id', t2iData.image_id || '');
-                var t2iImg = document.createElement('img');
-                t2iImg.src = t2iData.url;
-                t2iImg.className = 'generated-image';
-                t2iImg.style.maxWidth = '100%';
-                t2iImg.style.borderRadius = '8px';
-                t2iImg.style.marginTop = '8px';
-                t2iImg.style.cursor = 'pointer';
-                t2iWrap.appendChild(t2iImg);
-                t2iText.appendChild(t2iWrap);
-            } else if (!t2iData) {
-                removeThinking();
-                addMessage("assistant", "\u26a0\ufe0f Lance generation failed: no response");
-            }
-        } catch (err) {
-            removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Lance generation failed: " + err.message);
-        }
-        isStreaming = false;
-        sendBtn.disabled = false;
-        scrollToBottom();
-        return;
-    }
-
-    // ─── Lance Image-to-Image ─────────────────────────────────────────────
-    if (selectedMode === 'lance-i2i') {
-        removeThinking();
-        if (imagesToSend.length === 0) {
-            addMessage("assistant", "\u26a0\ufe0f Please attach an image to transform.");
-            isStreaming = false; sendBtn.disabled = false; return;
-        }
-        try {
-            showThinking();
-            var thinkingMsg = document.getElementById("thinking-msg");
-            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
-            if (indicator) {
-                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="lance-i2i-fill"></div></div><div class="gen-progress-text"><span id="lance-i2i-label">Processing with Lance...</span><span id="lance-i2i-eta"></span></div></div>';
-            }
-
-            var rawBase64 = imagesToSend[0].dataUrl;
-            var base64Data = rawBase64.split(',')[1] || rawBase64;
-
-            const i2iResp = await fetch("/chat/" + threadId + "/lance-i2i", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image: base64Data, prompt: content })
-            });
-
-            const i2iReader = i2iResp.body.getReader();
-            const i2iDecoder = new TextDecoder();
-            var i2iBuffer = '';
-            var i2iDone = false;
-            var i2iData = null;
-
-            while (!i2iDone) {
-                const { done, value } = await i2iReader.read();
-                if (done) { i2iDone = true; }
-                i2iBuffer += i2iDecoder.decode(value, { stream: true });
-                var i2iLines = i2iBuffer.split('\n');
-                i2iBuffer = i2iLines.pop();
-
-                for (var ii = 0; ii < i2iLines.length; ii++) {
-                    var iline = i2iLines[ii].trim();
-                    if (!iline.startsWith('data: ')) continue;
-                    try { var ievent = JSON.parse(iline.substring(6)); } catch (e) { continue; }
-
-                    if (ievent.error) {
-                        removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + ievent.error);
-                        i2iDone = true; break;
-                    }
-
-                    var i2iFill = document.getElementById('lance-i2i-fill');
-                    var i2iLabel = document.getElementById('lance-i2i-label');
-                    if (ievent.stage === 'processing' && i2iLabel) {
-                        if (i2iFill) i2iFill.style.width = '30%';
-                        i2iLabel.textContent = ievent.message || 'Processing...';
-                    }
-                    else if (ievent.stage === 'done' && ievent.url) {
-                        if (i2iFill) i2iFill.style.width = '100%';
-                        i2iData = ievent;
-                    }
-                }
-            }
-
-            if (i2iData && i2iData.url) {
-                removeThinking();
-                var i2iDiv = addMessage("assistant", "");
-                var i2iText = i2iDiv.querySelector('.message-text');
-                var i2iWrap = document.createElement('div');
-                i2iWrap.className = 'generated-image-wrapper';
-                i2iWrap.setAttribute('data-image-id', i2iData.image_id || '');
-                var i2iImg = document.createElement('img');
-                i2iImg.src = i2iData.url;
-                i2iImg.className = 'generated-image';
-                i2iImg.style.maxWidth = '100%';
-                i2iImg.style.borderRadius = '8px';
-                i2iImg.style.marginTop = '8px';
-                i2iImg.style.cursor = 'pointer';
-                i2iWrap.appendChild(i2iImg);
-                i2iText.appendChild(i2iWrap);
-            }
-        } catch (err) {
-            removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Lance I2I failed: " + err.message);
-        }
-        isStreaming = false;
-        sendBtn.disabled = false;
-        scrollToBottom();
-        return;
-    }
-
-    // ─── Lance Image-to-Video ─────────────────────────────────────────────
-    if (selectedMode === 'lance-i2v') {
-        removeThinking();
-        if (imagesToSend.length === 0) {
-            addMessage("assistant", "\u26a0\ufe0f Please attach an image to animate.");
-            isStreaming = false; sendBtn.disabled = false; return;
-        }
-        try {
-            showThinking();
-            var thinkingMsg = document.getElementById("thinking-msg");
-            var indicator = thinkingMsg ? thinkingMsg.querySelector('.thinking-indicator') : null;
-            if (indicator) {
-                indicator.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="lance-i2v-fill"></div></div><div class="gen-progress-text"><span id="lance-i2v-label">Starting Lance video...</span><span id="lance-i2v-eta"></span></div></div>';
-            }
-
-            var rawBase64 = imagesToSend[0].dataUrl;
-            var base64Data = rawBase64.split(',')[1] || rawBase64;
-
-            const i2vResp = await fetch("/chat/" + threadId + "/lance-i2v", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image: base64Data, prompt: content, width: 480, height: 480, frames: 33 })
-            });
-
-            const i2vReader = i2vResp.body.getReader();
-            const i2vDecoder = new TextDecoder();
-            var i2vBuffer = '';
-            var i2vDone = false;
-
-            while (!i2vDone) {
-                const { done, value } = await i2vReader.read();
-                if (done) { i2vDone = true; }
-                i2vBuffer += i2vDecoder.decode(value, { stream: true });
-                var i2vLines = i2vBuffer.split('\n');
-                i2vBuffer = i2vLines.pop();
-
-                for (var iv = 0; iv < i2vLines.length; iv++) {
-                    var vline = i2vLines[iv].trim();
-                    if (!vline.startsWith('data: ')) continue;
-                    try { var vevent = JSON.parse(vline.substring(6)); } catch (e) { continue; }
-
-                    if (vevent.error) {
-                        removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + vevent.error);
-                        i2vDone = true; break;
-                    }
-
-                    var i2vFill = document.getElementById('lance-i2v-fill');
-                    var i2vLabel = document.getElementById('lance-i2v-label');
-                    var i2vEta = document.getElementById('lance-i2v-eta');
-
-                    if (vevent.stage === 'loading' && i2vLabel) i2vLabel.textContent = 'Loading Lance model...';
-                    else if (vevent.stage === 'encoding' && i2vLabel) { i2vLabel.textContent = 'Encoding...'; if (i2vFill) i2vFill.style.width = '10%'; }
-                    else if (vevent.stage === 'sampling' || vevent.stage === 'diffusion') {
-                        var step = vevent.step || 0;
-                        var total = vevent.total_steps || 20;
-                        var pct = Math.round(10 + (step / total) * 75);
-                        if (i2vFill) i2vFill.style.width = pct + '%';
-                        if (i2vLabel) i2vLabel.textContent = 'Generating frames... ' + step + '/' + total;
-                        if (vevent.speed_per_step && i2vEta) i2vEta.textContent = ' ~' + Math.ceil((total - step) * vevent.speed_per_step) + 's remaining';
-                    }
-                    else if (vevent.stage === 'vae_decode' && i2vLabel) { i2vLabel.textContent = 'Decoding video...'; if (i2vFill) i2vFill.style.width = '85%'; }
-                    else if (vevent.stage === 'converting' && i2vLabel) { i2vLabel.textContent = 'Converting to MP4...'; if (i2vFill) i2vFill.style.width = '95%'; }
-                    else if (vevent.stage === 'done' && vevent.url) {
-                        if (i2vFill) i2vFill.style.width = '100%';
-                        removeThinking();
-                        var i2vHtml = '<div class="generated-video-wrapper">';
-                        i2vHtml += '<video controls autoplay loop playsinline style="max-width:100%;border-radius:8px;">';
-                        i2vHtml += '<source src="' + vevent.url + '" type="video/mp4"></video>';
-                        i2vHtml += '<div style="font-size:0.75rem;color:var(--text-muted,#8b949e);margin-top:4px;">';
-                        i2vHtml += 'Lance I2V';
-                        if (vevent.elapsed_s) i2vHtml += ' \u00b7 ' + vevent.elapsed_s + 's';
-                        i2vHtml += '</div></div>';
-                        addMessage("assistant", i2vHtml);
-                        i2vDone = true;
-                    }
-                }
-            }
-        } catch (err) {
-            removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Lance I2V failed: " + err.message);
         }
         isStreaming = false;
         sendBtn.disabled = false;

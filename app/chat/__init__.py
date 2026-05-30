@@ -173,4 +173,3 @@ from app.chat import routes  # noqa: E402,F401 - register text-chat routes
 from app.chat import images  # noqa: E402,F401 - register image routes
 from app.chat import video   # noqa: E402,F401 - register video routes
 from app.chat import export   # noqa: E402,F401 - register export routes
-from app.chat import lance  # noqa: E402,F401 - register Lance routes

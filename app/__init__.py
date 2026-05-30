@@ -50,7 +50,6 @@ def create_app(test_config=None):
     from app.dashboard import dash_bp
     from app.chat import chat_bp
     from app.billing import billing_bp
-    from app.admin import admin_bp
     from app.contact import contact_bp
     from app.api import api_bp
     from app.apikeys import apikeys_bp
@@ -64,7 +63,6 @@ def create_app(test_config=None):
     app.register_blueprint(dash_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(billing_bp)
-    app.register_blueprint(admin_bp)
     app.register_blueprint(contact_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(apikeys_bp)

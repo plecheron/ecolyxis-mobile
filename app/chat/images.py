@@ -760,7 +760,7 @@ def edit_image_endpoint(thread_id):
       - prompt: text edit instruction (required)
       - source_image_id: ID of a GeneratedImage to track lineage (optional)
       - size: output size, one of [512, 768, 1024] (default 512)
-      - steps: inference steps (default 28)
+      - steps: inference steps (default 8)
       - cfg: CFG scale (default 6.0)
       - seed: reproducibility seed (default -1 = random)
 
