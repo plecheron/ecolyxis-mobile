@@ -101,7 +101,7 @@ def _run_generation(app, user_id, thread_id, prompt, width, height, seed, job_id
 
             # Save an assistant message so the image appears when loading the thread
             msg_content = json.dumps([
-                {"type": "text", "text": f"Generated image: {prompt[:100]}"},
+                {"type": "text", "text": f"Generated image: {prompt}"},
                 {"type": "image", "file": local_name, "name": local_name,
                  "image_id": img_record.id, "seed": actual_seed,
                  "width": gen_width, "height": gen_height},
@@ -414,7 +414,7 @@ def _finalize_generation(job_id, event, image_url, app, user_id, thread_id, prom
             db.session.flush()
 
             msg_content = json.dumps([
-                {"type": "text", "text": f"Generated image: {prompt[:100]}"},
+                {"type": "text", "text": f"Generated image: {prompt}"},
                 {"type": "image", "file": local_name, "name": local_name,
                  "image_id": img_record.id, "seed": actual_seed,
                  "width": gen_w, "height": gen_h},
@@ -696,7 +696,7 @@ def _run_edit(app, user_id, thread_id, image_b64, prompt, size, steps, cfg, seed
             img_record = GeneratedImage(
                 user_id=user_id,
                 thread_id=thread_id,
-                prompt=f"[edit] {prompt[:200]}",
+                prompt=f"[edit] {prompt}",
                 seed=seed if seed >= 0 else 0,
                 width=size,
                 height=size,
@@ -708,7 +708,7 @@ def _run_edit(app, user_id, thread_id, image_b64, prompt, size, steps, cfg, seed
 
             # Save assistant message
             msg_content = json.dumps([
-                {"type": "text", "text": f"Edited image: {prompt[:100]}"},
+                {"type": "text", "text": f"Edited image: {prompt}"},
                 {"type": "image", "file": local_name, "name": local_name,
                  "image_id": img_record.id, "seed": seed if seed >= 0 else 0,
                  "width": size, "height": size},

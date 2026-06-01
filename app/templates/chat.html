@@ -122,6 +122,9 @@
                     <span class="msg-tokens">⚡ {{ msg.tokens_used }} tokens</span>
                     {% endif %}
                 </div>
+                {% if msg.role == 'assistant' %}
+                <button class="msg-action btn-tts" onclick="speakMessage({{ msg.id }}, this)" title="Read aloud">🔊</button>
+                {% endif %}
                 {% if msg.role == 'assistant' and loop.last %}
                 <button class="msg-action btn-regenerate" onclick="regenerateLast()" title="Regenerate response">🔄</button>
                 {% endif %}
@@ -351,6 +354,9 @@ function addMessage(role, content, isMarkdown, msgId) {
     let actions = '';
     if (role === 'user') {
         actions = '<button class="msg-action btn-edit" onclick="startEdit(' + (msgId || 0) + ')" title="Edit message">✏️</button>';
+    }
+    if (role === 'assistant' && msgId) {
+        actions += '<button class="msg-action btn-tts" onclick="speakMessage(' + msgId + ', this)" title="Read aloud">🔊</button>';
     }
     div.innerHTML = '<div class="message-avatar">' + icon + '</div><div class="message-content"><div class="message-text">' + display + '</div>' + actions + '</div>';
     messagesDiv.appendChild(div);
@@ -1921,5 +1927,78 @@ function reconnectToEdit(tid, jid) {
         localStorage.removeItem('ecolyxis_edit');
     }
 })();
+
+// ─── TTS (Text-to-Speech) ──────────────────────────────────────────────
+let currentTTS = null;  // { audio: Audio, btn: Element }
+
+function speakMessage(msgId, btn) {
+    // If already playing this message, stop it
+    if (currentTTS && currentTTS.btn === btn) {
+        currentTTS.audio.pause();
+        currentTTS.audio.currentTime = 0;
+        btn.textContent = '🔊';
+        btn.title = 'Read aloud';
+        currentTTS = null;
+        return;
+    }
+    // Stop any other playing TTS
+    if (currentTTS) {
+        currentTTS.audio.pause();
+        currentTTS.audio.currentTime = 0;
+        currentTTS.btn.textContent = '🔊';
+        currentTTS.btn.title = 'Read aloud';
+        currentTTS = null;
+    }
+
+    btn.textContent = '⏳';
+    btn.title = 'Loading...';
+
+    const threadId = window.location.pathname.split('/').pop();
+
+    fetch('/chat/' + threadId + '/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: msgId })
+    })
+    .then(resp => {
+        if (!resp.ok) return resp.json().then(e => { throw new Error(e.error || 'TTS failed'); });
+        return resp.blob();
+    })
+    .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        currentTTS = { audio: audio, btn: btn };
+
+        btn.textContent = '⏸';
+        btn.title = 'Pause';
+
+        audio.play().catch(err => {
+            btn.textContent = '🔊';
+            btn.title = 'Read aloud';
+            console.error('Audio play failed:', err);
+        });
+
+        audio.onended = () => {
+            btn.textContent = '🔊';
+            btn.title = 'Read aloud';
+            URL.revokeObjectURL(url);
+            currentTTS = null;
+        };
+
+        audio.onpause = () => {
+            if (currentTTS && currentTTS.btn === btn) {
+                btn.textContent = '🔊';
+                btn.title = 'Read aloud';
+                currentTTS = null;
+            }
+        };
+    })
+    .catch(err => {
+        btn.textContent = '🔊';
+        btn.title = 'Read aloud';
+        alert(err.message || 'TTS failed — the model may be loading, try again in a few minutes.');
+    });
+}
+
 </script>
 {% endblock %}

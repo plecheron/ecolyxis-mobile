@@ -1536,3 +1536,13 @@ a:hover {
   color: var(--text-secondary, #888);
   margin-top: 4px;
 }
+
+/* TTS (Read Aloud) Button */
+.btn-tts {
+    top: 0;
+    right: 2.2rem;
+}
+.btn-tts:active,
+.btn-tts:hover {
+    transform: scale(1.2);
+}

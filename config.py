@@ -40,6 +40,9 @@ class Config:
     # Rate limiting (free tier)
     RATE_LIMIT_MESSAGES = 5
     RATE_LIMIT_WINDOW_SECONDS = 3600  # 60 minutes
-    HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://192.168.122.5:8083")
-    WAN22_URL = os.environ.get("WAN22_URL", "http://192.168.122.5:8085")
-    EDIT_URL = os.environ.get("EDIT_URL", "http://192.168.122.5:8087")
+    HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://10.0.0.6:8083")
+    WAN22_URL = os.environ.get("WAN22_URL", "http://10.0.0.6:8085")
+    EDIT_URL = os.environ.get("EDIT_URL", "http://10.0.0.6:8087")
+
+    # TTS (Qwen3-TTS via gpu-manager proxy)
+    TTS_URL = os.environ.get("TTS_URL", "http://10.0.0.6:8091")
