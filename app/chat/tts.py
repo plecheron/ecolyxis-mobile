@@ -5,7 +5,7 @@ POST /chat/<thread_id>/tts
     Returns: WAV audio (audio/wav)
 
 The endpoint extracts text from a message (or accepts raw text), calls the
-Qwen3-TTS backend on gpu1 via gpu-manager's proxy, and streams back the WAV.
+Qwen3-TTS backend on gpu1 via gpu-manager proxy, and streams back the WAV.
 
 GPU model switching is handled automatically by gpu-manager: if the TTS
 backend isn't loaded, the first request triggers a cold start (~3 min on P40).
@@ -14,6 +14,7 @@ backend isn't loaded, the first request triggers a cold start (~3 min on P40).
 import io
 import json
 import logging
+import re
 
 from flask import request, Response, current_app
 from flask_login import login_required, current_user
@@ -21,12 +22,14 @@ import requests as req_lib
 
 from app import db
 from app.models import Message, Thread
-from app.chat import chat_bp, check_rate_limit
+from app.chat import chat_bp
 
 log = logging.getLogger(__name__)
 
-# TTS takes ~20s on P40 for a typical message, plus potential cold start
+# TTS takes ~20-30s per 60 chars on P40. Cap at 500 chars (~120s generation).
+# gpu-manager proxy read_timeout is 300s to handle cold starts.
 TTS_TIMEOUT = 300
+MAX_TTS_CHARS = 500
 
 
 def _get_tts_url():
@@ -38,7 +41,7 @@ def _get_tts_url():
 
 
 def _extract_text_from_message(message):
-    """Extract plain text from a Message's content field.
+    """Extract plain text from a Message content field.
 
     Content may be:
       - A plain string
@@ -62,6 +65,25 @@ def _extract_text_from_message(message):
 
     # Plain string
     return content.strip()
+
+
+def _strip_markdown(text):
+    """Remove markdown formatting from text for cleaner TTS."""
+    # Remove image tags
+    text = re.sub(r'!?\[.*?\]\(.*?\)', '', text)
+    # Remove code blocks
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # Remove inline code
+    text = re.sub(r'`[^`]+`', '', text)
+    # Remove bold/italic
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
+    # Remove links but keep text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove headings
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Collapse whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 @chat_bp.route("/chat/<thread_id>/tts", methods=["POST"])
@@ -89,9 +111,15 @@ def tts(thread_id):
     if not text:
         return Response(json.dumps({"error": "No text to speak"}), status=400, mimetype="application/json")
 
-    # Truncate very long texts (TTS handles ~1000 chars well)
-    if len(text) > 2000:
-        text = text[:2000]
+    # Strip markdown for cleaner speech
+    text = _strip_markdown(text)
+
+    if not text:
+        return Response(json.dumps({"error": "No text to speak after stripping formatting"}), status=400, mimetype="application/json")
+
+    # Truncate to keep generation under ~120s on P40
+    if len(text) > MAX_TTS_CHARS:
+        text = text[:MAX_TTS_CHARS].rsplit(' ', 1)[0] + '...'
 
     tts_url = _get_tts_url()
     if not tts_url:
