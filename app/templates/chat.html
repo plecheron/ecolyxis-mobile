@@ -162,6 +162,7 @@ const messagesDiv = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
 const isPremium = {{ 'true' if rate_info.is_premium else 'false' }};
+const JOBS_ENABLED = {{ 'true' if jobs_enabled else 'false' }};
 let isStreaming = false;
 let isThinking = false;
 
@@ -655,6 +656,156 @@ async function compactConversation() {
     sendBtn.disabled = false;
 }
 
+// ===== Durable job path (resumable streaming) =====
+// Generation runs in the worker; the browser only subscribes to the job's
+// event log via EventSource. A dropped connection auto-reconnects with
+// Last-Event-ID and the server replays only the missed tail, so nothing is
+// lost and the assistant message is persisted server-side exactly once.
+
+function finalizeAssistant(textEl, fullResponse, promptTokens, completionTokens, startTime) {
+    if (!fullResponse || !textEl) return;
+    textEl.classList.remove('streaming-cursor');
+    textEl.innerHTML = renderMd(fullResponse);
+    const totalTokens = (promptTokens || 0) + (completionTokens || 0);
+    if (totalTokens > 0) {
+        const lastContent = textEl.closest('.message-content');
+        const tokenSpan = document.createElement('span');
+        tokenSpan.className = 'msg-tokens';
+        const endTime = performance.now();
+        const elapsed = ((endTime - startTime) / 1000).toFixed(1);
+        const tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
+        tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
+        lastContent.appendChild(tokenSpan);
+        applyTokenHighlight(textEl.closest('.message'), totalTokens);
+    }
+    updateRegenerateButton();
+    if (!isPremium) {
+        const badge = document.getElementById('rate-limit-badge');
+        if (badge) {
+            const parts = badge.textContent.split('/');
+            const newUsed = parseInt(parts[0]) + 1;
+            updateRateLimit(newUsed, parseInt(parts[1].split(' ')[0]));
+        }
+    }
+}
+
+// Subscribe to a job's resumable event stream. Resolves when the job reaches a
+// terminal event. `opts.textEl`/`opts.initialText` let a reconnect continue an
+// existing bubble (native EventSource reconnect handles transient drops).
+function streamJob(jobId, opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+        let textEl = opts.textEl || null;
+        let fullResponse = opts.initialText || "";
+        let promptTokens = 0, completionTokens = 0;
+        const startTime = performance.now();
+        let settled = false;
+        const es = new EventSource("/jobs/" + jobId + "/stream");
+
+        function finish(extra) {
+            if (settled) return;
+            settled = true;
+            es.close();
+            hideReconnectBanner();
+            resolve(Object.assign({ fullResponse, promptTokens, completionTokens, textEl }, extra || {}));
+        }
+
+        es.onmessage = function(ev) {
+            hideReconnectBanner();
+            let event;
+            try { event = JSON.parse(ev.data); } catch (e) { return; }
+            const t = event.type;
+            if (t === "thinking_start") {
+                isThinking = true;
+            } else if (t === "thinking_end") {
+                isThinking = false;
+            } else if (t === "content") {
+                if (!textEl) {
+                    removeThinking();
+                    const div = addMessage("assistant", "", false);
+                    textEl = div.querySelector(".message-text");
+                }
+                fullResponse += (event.text || "");
+                textEl.innerHTML = renderStreamingMd(fullResponse);
+                textEl.classList.add('streaming-cursor');
+                scrollToBottom();
+            } else if (t === "done") {
+                promptTokens = event.prompt_tokens || 0;
+                completionTokens = event.completion_tokens || event.tokens || 0;
+                finalizeAssistant(textEl, fullResponse, promptTokens, completionTokens, startTime);
+                finish({ done: true });
+            } else if (t === "error") {
+                removeThinking();
+                addMessage("assistant", "⚠️ " + (event.message || "Generation failed"), false);
+                finish({ error: true });
+            }
+        };
+
+        es.onerror = function() {
+            if (settled) return;
+            if (es.readyState === EventSource.CLOSED) {
+                // Browser stopped retrying / server closed without a terminal
+                // event. The job keeps running server-side; a reload can resume.
+                finish({ error: true, closed: true });
+            } else {
+                // CONNECTING — auto-retrying with Last-Event-ID.
+                showReconnectBanner('⚠️ Connection lost — resuming…');
+            }
+        };
+    });
+}
+
+async function maybeGenerateTitle(hasResponse) {
+    if (!hasResponse || threadTitle !== 'New Chat') return;
+    try {
+        const titleResp = await fetch("/chat/" + threadId + "/generate-title", { method: "POST" });
+        if (!titleResp.ok) return;
+        const titleData = await titleResp.json();
+        if (titleData.title && titleData.title !== 'New Chat') {
+            const activeLink = document.querySelector('.thread-item.active .thread-title');
+            if (activeLink) activeLink.textContent = titleData.title;
+            const mobileTitle = document.querySelector('.mobile-title');
+            if (mobileTitle) mobileTitle.textContent = titleData.title;
+            document.title = titleData.title + ' — Ecolyxis';
+        }
+    } catch (e) {}
+}
+
+async function sendMessageViaJob(content, imagesToSend, mode) {
+    try {
+        const resp = await fetch("/jobs/chat/" + threadId, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: content, images: imagesToSend.map(i => i.dataUrl), mode: mode })
+        });
+        if (resp.status === 429) {
+            const body = await resp.json().catch(() => ({}));
+            removeThinking();
+            showRateLimitModal(body.message || "Rate limit reached.");
+            return;
+        }
+        if (!resp.ok) {
+            removeThinking();
+            addMessage("assistant", "⚠️ Could not start generation.", false);
+            return;
+        }
+        const data = await resp.json();
+        // Remember the in-flight job so a tab reload can resume it.
+        try { localStorage.setItem('ecolyxis_chat_job', JSON.stringify({ threadId: threadId, jobId: data.job_id })); } catch (e) {}
+        const result = await streamJob(data.job_id);
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+        if (!result.fullResponse && !result.error) {
+            removeThinking();
+            addMessage("assistant", "⚠️ No response received.", false);
+        }
+        await maybeGenerateTitle(!!result.fullResponse);
+    } catch (err) {
+        removeThinking();
+        addMessage("assistant", "⚠️ Error: " + err.message, false);
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+    }
+}
+
 async function sendMessage(e) {
     e.preventDefault();
     if (isStreaming) return;
@@ -1046,6 +1197,15 @@ async function sendMessage(e) {
     }
 
 
+
+    // Durable, resumable path — survives connection drops. Legacy in-request
+    // streaming below stays as the fallback when the flag is off.
+    if (JOBS_ENABLED) {
+        await sendMessageViaJob(content, imagesToSend, selectedMode);
+        isStreaming = false;
+        sendBtn.disabled = false;
+        return;
+    }
 
     let fullResponse = "";
     let textEl = null;
@@ -1926,6 +2086,39 @@ function reconnectToEdit(tid, jid) {
     } catch(e) {
         localStorage.removeItem('ecolyxis_edit');
     }
+})();
+
+// Auto-resume an in-flight chat generation on page load (e.g. after a reload
+// while the worker was still streaming). The assistant message isn't in the DB
+// yet, so we replay the job's event log into a fresh bubble.
+(function() {
+    if (!JOBS_ENABLED) return;
+    var saved;
+    try { saved = localStorage.getItem('ecolyxis_chat_job'); } catch (e) { return; }
+    if (!saved) return;
+    var info;
+    try { info = JSON.parse(saved); } catch (e) {
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e2) {}
+        return;
+    }
+    if (!info || info.threadId !== threadId || !info.jobId) {
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+        return;
+    }
+    fetch("/jobs/" + info.jobId).then(function(r) { return r.ok ? r.json() : null; }).then(function(job) {
+        if (!job || (job.status !== 'queued' && job.status !== 'running')) {
+            try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+            return;
+        }
+        isStreaming = true;
+        sendBtn.disabled = true;
+        showThinking();
+        streamJob(info.jobId).then(function() {
+            try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+            isStreaming = false;
+            sendBtn.disabled = false;
+        });
+    }).catch(function() {});
 })();
 
 // ─── TTS (Text-to-Speech) ──────────────────────────────────────────────

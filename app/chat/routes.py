@@ -52,6 +52,7 @@ def view(thread_id):
         messages=messages,
         rate_info=rate_info,
         thread_system_prompt=thread.system_prompt,
+        jobs_enabled=current_app.config.get("JOBS_ENABLED", False),
     )
 
 
