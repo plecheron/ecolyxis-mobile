@@ -43,6 +43,49 @@ def check_rate_limit():
     return used < limit, used, limit
 
 
+def save_user_message(thread, content, images):
+    """Persist a user message (text and/or uploaded images), refresh the thread
+    title, and return the created Message.
+
+    Shared by the legacy in-request SSE path (``send_message``) and the async
+    job-submit path (``app.jobs.routes``) so image handling stays identical.
+    """
+    msg_type = "text"
+    if images:
+        _ensure_upload_dir()
+        msg_parts = []
+        if content:
+            msg_parts.append({"type": "text", "text": content})
+        for img_data_url in images:
+            match = re.match(r'^data:(image/[\w]+);base64,(.+)$', img_data_url, re.DOTALL)
+            if match:
+                mime = match.group(1)
+                b64_data = match.group(2)
+                img_bytes = base64.b64decode(b64_data)
+                ext = mime.split('/')[1].replace('jpeg', 'jpg')
+                filename = f"{uuid.uuid4().hex[:12]}.{ext}"
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                with open(filepath, 'wb') as f:
+                    f.write(img_bytes)
+                msg_parts.append({"type": "image", "file": filename, "name": filename})
+            else:
+                # Legacy fallback: already a URL or unknown format
+                msg_parts.append({"type": "image", "url": img_data_url})
+        storage_content = json.dumps(msg_parts)
+        has_text = any(p.get("type") == "text" and p.get("text", "").strip() for p in msg_parts)
+        msg_type = "mixed" if has_text else "image"
+    else:
+        storage_content = content
+
+    user_msg = Message(thread_id=thread.id, role="user", content=storage_content, message_type=msg_type)
+    db.session.add(user_msg)
+    db.session.commit()
+
+    thread.update_title()
+    db.session.commit()
+    return user_msg
+
+
 # ---------------------------------------------------------------------------
 # Shared streaming helpers
 # ---------------------------------------------------------------------------

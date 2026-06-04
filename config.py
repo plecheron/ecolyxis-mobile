@@ -26,6 +26,9 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Redis — durable job queue + resumable event log (see app/redis_client.py)
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+    # Route the chat frontend through the durable worker/job path. Off by
+    # default; the new endpoints exist regardless — this flips the UI over.
+    JOBS_ENABLED = os.environ.get("JOBS_ENABLED", "0") not in ("0", "", "false", "False")
     LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
     LLM_MODEL = "Qwen_Qwen3.6-35B-A3B-Q4_0.gguf"
     LLM_MAX_HISTORY = 20

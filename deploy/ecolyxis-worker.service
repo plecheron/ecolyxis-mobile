@@ -1,0 +1,15 @@
+[Unit]
+Description=Ecolyxis generation worker
+After=network.target redis-server.service wg-quick@wg0.service
+Wants=redis-server.service
+
+[Service]
+User=ashley
+WorkingDirectory=/opt/Ecolyxis
+Environment=WORKER_CONCURRENCY=4
+ExecStart=/opt/Ecolyxis/venv/bin/python worker.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,218 @@
+"""Durable job path: submit, worker run, resumable streaming, idempotency,
+ownership, and crash recovery. Redis is faked so no daemon is needed."""
+import json
+import uuid
+
+import fakeredis
+import pytest
+
+from app.models import Thread, Message, GenerationJob
+
+
+@pytest.fixture
+def fake_redis():
+    """Inject a fresh in-memory Redis as the shared client for the test."""
+    import app.redis_client as rc
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    prev = rc._client
+    rc._client = fake
+    yield fake
+    rc._client = prev
+
+
+@pytest.fixture
+def stub_llm(monkeypatch):
+    """Replace the LLM client with a deterministic token stream."""
+    class FakeClient:
+        def build_messages(self, thread, mode="standard"):
+            return [{"role": "user", "content": "hi"}]
+
+        def stream_chat(self, msgs, mode="standard"):
+            yield {"thinking_start": True}
+            yield {"thinking_end": True}
+            for tok in ["Hello", ", ", "world", "!"]:
+                yield tok
+            yield {"prompt_tokens": 7, "completion_tokens": 4}
+
+    import app.chat as chatmod
+    monkeypatch.setattr(chatmod, "get_client", lambda: FakeClient())
+    return FakeClient
+
+
+def _thread(db, user):
+    t = Thread(id=str(uuid.uuid4()), user_id=user.id, title="Test")
+    db.session.add(t)
+    db.session.commit()
+    return t
+
+
+# --- submit ---------------------------------------------------------------
+
+def test_submit_creates_job_and_enqueues(app, db, make_user, login_as, client, fake_redis):
+    user = make_user()
+    thread = _thread(db, user)
+    login_as(user)
+
+    resp = client.post(f"/jobs/chat/{thread.id}", json={"content": "hello there"})
+    assert resp.status_code == 202
+    body = resp.get_json()
+    assert body["status"] == "queued"
+    assert body["stream_url"] == f"/jobs/{body['job_id']}/stream"
+
+    with app.app_context():
+        job = db.session.get(GenerationJob, body["job_id"])
+        assert job.kind == "chat" and job.status == "queued"
+        # user message persisted
+        assert Message.query.filter_by(thread_id=thread.id, role="user").count() == 1
+
+    # enqueued onto the free lane (non-premium user)
+    assert fake_redis.lrange("jobs:queue:free", 0, -1) == [body["job_id"]]
+
+
+def test_submit_empty_rejected(app, db, make_user, login_as, client, fake_redis):
+    user = make_user()
+    thread = _thread(db, user)
+    login_as(user)
+    resp = client.post(f"/jobs/chat/{thread.id}", json={"content": "   "})
+    assert resp.status_code == 400
+
+
+def test_submit_premium_uses_premium_lane(app, db, make_user, login_as, client, fake_redis):
+    user = make_user(tier="premium", subscription_status="active")
+    thread = _thread(db, user)
+    login_as(user)
+    resp = client.post(f"/jobs/chat/{thread.id}", json={"content": "hi"})
+    job_id = resp.get_json()["job_id"]
+    assert fake_redis.lrange("jobs:queue:premium", 0, -1) == [job_id]
+
+
+# --- worker run -----------------------------------------------------------
+
+def test_worker_runs_job_and_persists(app, db, make_user, fake_redis, stub_llm):
+    from app.jobs.worker import run_job
+    from app.jobs import read_events
+
+    user = make_user()
+    thread = _thread(db, user)
+    db.session.add(Message(thread_id=thread.id, role="user", content="hi"))
+    db.session.commit()
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="queued", is_premium=False, params={"mode": "standard"})
+    db.session.add(job)
+    db.session.commit()
+    job_id, thread_id = job.id, thread.id
+
+    run_job(app, "w-t0", job_id)
+
+    events = read_events(job_id, last_id="0", block_ms=50)
+    types = [e["type"] for _, e in events]
+    assert types[0] == "stream_start" and types[-1] == "done"
+    assert "thinking_start" in types and "thinking_end" in types
+    text = "".join(e["text"] for _, e in events if e["type"] == "content")
+    assert text == "Hello, world!"
+
+    with app.app_context():
+        msg = Message.query.filter_by(thread_id=thread_id, role="assistant").one()
+        assert msg.content == "Hello, world!" and msg.job_id == job_id
+        assert db.session.get(GenerationJob, job_id).status == "done"
+
+
+def test_persist_is_idempotent(app, db, make_user, fake_redis, stub_llm):
+    from app.jobs.worker import run_job
+    user = make_user()
+    thread = _thread(db, user)
+    db.session.add(Message(thread_id=thread.id, role="user", content="hi"))
+    db.session.commit()
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="queued", is_premium=False, params={})
+    db.session.add(job)
+    db.session.commit()
+    job_id, thread_id = job.id, thread.id
+
+    run_job(app, "w-t0", job_id)
+    run_job(app, "w-t0", job_id)  # terminal -> no-op
+
+    with app.app_context():
+        assert Message.query.filter_by(thread_id=thread_id, role="assistant").count() == 1
+
+
+# --- resumable streaming --------------------------------------------------
+
+def test_stream_replays_and_resumes(app, db, make_user, login_as, client, fake_redis):
+    from app.jobs import publish_event
+    user = make_user()
+    thread = _thread(db, user)
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="running", is_premium=False, params={})
+    db.session.add(job)
+    db.session.commit()
+    job_id = job.id
+
+    publish_event(job_id, {"type": "stream_start"})
+    seq2 = publish_event(job_id, {"type": "content", "text": "Hello"})
+    publish_event(job_id, {"type": "content", "text": " world"})
+    publish_event(job_id, {"type": "done", "message_id": 1})
+
+    login_as(user)
+
+    # full replay from the start
+    full = client.get(f"/jobs/{job_id}/stream").get_data(as_text=True)
+    assert "Hello" in full and "world" in full and '"type": "done"' in full
+
+    # resume after the 2nd event -> only the tail, no first "Hello"
+    tail = client.get(f"/jobs/{job_id}/stream?last_id={seq2}").get_data(as_text=True)
+    assert "world" in tail and '"type": "done"' in tail
+    assert '"text": "Hello"' not in tail
+
+
+def test_stream_synthesizes_when_log_expired(app, db, make_user, login_as, client, fake_redis):
+    """Job finished and its event log is gone -> stream still emits the outcome."""
+    user = make_user()
+    thread = _thread(db, user)
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="done", is_premium=False, result={"message_id": 5})
+    db.session.add(job)
+    db.session.commit()
+    # no events in redis for this job
+    login_as(user)
+    out = client.get(f"/jobs/{job.id}/stream").get_data(as_text=True)
+    assert '"type": "done"' in out and '"message_id": 5' in out
+
+
+# --- ownership ------------------------------------------------------------
+
+def test_cannot_access_other_users_job(app, db, make_user, login_as, client, fake_redis):
+    owner = make_user(email="owner@x.com", username="owner")
+    other = make_user(email="other@x.com", username="other")
+    thread = _thread(db, owner)
+    job = GenerationJob(user_id=owner.id, thread_id=thread.id, kind="chat", status="running")
+    db.session.add(job)
+    db.session.commit()
+    job_id = job.id
+
+    login_as(other)
+    assert client.get(f"/jobs/{job_id}").status_code == 404
+    assert client.get(f"/jobs/{job_id}/stream").status_code == 404
+
+
+# --- crash recovery -------------------------------------------------------
+
+def test_reaper_requeues_stranded_job(app, db, make_user, fake_redis):
+    from app.jobs import processing_key
+    from app.jobs.worker import _requeue_dead
+    user = make_user()
+    thread = _thread(db, user)
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="running", is_premium=True, worker_id="dead")
+    db.session.add(job)
+    db.session.commit()
+    job_id = job.id
+
+    # stranded in a dead worker's processing list (no alive key set)
+    fake_redis.lpush(processing_key("dead"), job_id)
+    _requeue_dead(app)
+
+    assert fake_redis.llen(processing_key("dead")) == 0
+    assert fake_redis.lrange("jobs:queue:premium", 0, -1) == [job_id]
+    with app.app_context():
+        assert db.session.get(GenerationJob, job_id).status == "queued"

@@ -58,6 +58,7 @@ def create_app(test_config=None):
     from app.legal import legal_bp
     from app.health import health_bp
     from app.pricing import pricing_bp
+    from app.jobs.routes import jobs_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dash_bp)
@@ -71,6 +72,7 @@ def create_app(test_config=None):
     app.register_blueprint(legal_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(pricing_bp)
+    app.register_blueprint(jobs_bp)
 
     # CSRF protection for all non-API POST routes
     from app.csrf import generate_csrf_token, validate_csrf_token
