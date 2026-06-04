@@ -35,11 +35,19 @@ from app.jobs import (
     worker_is_alive,
 )
 from app.jobs.handlers.chat import run_chat
+from app.jobs.handlers.media import (
+    run_image, run_upscale, run_edit, run_video, run_animate,
+)
 
 log = logging.getLogger("ecolyxis.worker")
 
 HANDLERS = {
     "chat": run_chat,
+    "image": run_image,
+    "upscale": run_upscale,
+    "edit": run_edit,
+    "video": run_video,
+    "animate": run_animate,
 }
 
 _shutdown = threading.Event()

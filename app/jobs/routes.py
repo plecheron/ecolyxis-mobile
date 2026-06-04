@@ -14,7 +14,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 from app import db
-from app.models import GenerationJob, Thread
+from app.models import GenerationJob, GeneratedImage, Thread
 from app.chat import check_rate_limit, save_user_message
 from app.jobs import enqueue, read_events
 
@@ -27,6 +27,29 @@ def _sse(generator):
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _rate_limited():
+    _, used, limit = check_rate_limit()
+    return jsonify({
+        "error": "rate_limited",
+        "message": f"Free tier limit reached ({limit} messages per hour). "
+                   "Upgrade to Premium for unlimited.",
+        "used": used, "limit": limit,
+    }), 429
+
+
+def _enqueue_job(thread, kind, params):
+    """Create + enqueue a GenerationJob, returning the 202 submit response."""
+    job = GenerationJob(
+        user_id=current_user.id, thread_id=thread.id, kind=kind,
+        status="queued", is_premium=current_user.is_premium, params=params,
+    )
+    db.session.add(job)
+    db.session.commit()
+    enqueue(job.id, job.is_premium)
+    return jsonify({"job_id": job.id, "status": "queued",
+                    "stream_url": f"/jobs/{job.id}/stream"}), 202
 
 
 @jobs_bp.route("/jobs/chat/<string:thread_id>", methods=["POST"])
@@ -72,6 +95,99 @@ def submit_chat(thread_id):
         "status": "queued",
         "stream_url": f"/jobs/{job.id}/stream",
     }), 202
+
+
+@jobs_bp.route("/jobs/image/<string:thread_id>", methods=["POST"])
+@login_required
+def submit_image(thread_id):
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    allowed, _, _ = check_rate_limit()
+    if not allowed:
+        return _rate_limited()
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "Empty prompt"}), 400
+    return _enqueue_job(thread, "image", {
+        "prompt": prompt,
+        "width": int(data.get("width", 1024)),
+        "height": int(data.get("height", 1024)),
+        "seed": int(data.get("seed", -1)),
+    })
+
+
+@jobs_bp.route("/jobs/upscale/<string:thread_id>", methods=["POST"])
+@login_required
+def submit_upscale(thread_id):
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    data = request.get_json(silent=True) or {}
+    image_id = data.get("image_id")
+    if not image_id:
+        return jsonify({"error": "image_id required"}), 400
+    img = GeneratedImage.query.filter_by(id=image_id, user_id=current_user.id).first_or_404()
+    next_size = img.next_size()
+    if next_size is None:
+        return jsonify({"error": "Already at maximum size"}), 400
+    return _enqueue_job(thread, "upscale", {
+        "prompt": img.prompt, "seed": img.seed,
+        "next_size": next_size, "parent_image_id": img.id,
+    })
+
+
+@jobs_bp.route("/jobs/edit/<string:thread_id>", methods=["POST"])
+@login_required
+def submit_edit(thread_id):
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    allowed, _, _ = check_rate_limit()
+    if not allowed:
+        return _rate_limited()
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
+    image = data.get("image", "")
+    if not prompt:
+        return jsonify({"error": "Edit instruction required"}), 400
+    if not image:
+        return jsonify({"error": "Source image required"}), 400
+    return _enqueue_job(thread, "edit", {
+        "prompt": prompt, "image": image,
+        "source_image_id": data.get("source_image_id"),
+        "size": int(data.get("size", 512)), "steps": int(data.get("steps", 4)),
+        "cfg": float(data.get("cfg", 6.0)), "seed": int(data.get("seed", -1)),
+    })
+
+
+@jobs_bp.route("/jobs/video/<string:thread_id>", methods=["POST"])
+@login_required
+def submit_video(thread_id):
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    allowed, _, _ = check_rate_limit()
+    if not allowed:
+        return _rate_limited()
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "Empty prompt"}), 400
+    return _enqueue_job(thread, "video", {
+        "prompt": prompt,
+        "width": int(data.get("width", 480)),
+        "height": int(data.get("height", 480)),
+        "frames": int(data.get("frames", 33)),
+    })
+
+
+@jobs_bp.route("/jobs/animate/<string:thread_id>", methods=["POST"])
+@login_required
+def submit_animate(thread_id):
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    allowed, _, _ = check_rate_limit()
+    if not allowed:
+        return _rate_limited()
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
+    image_url = (data.get("image_url") or "").strip()
+    if not prompt or not image_url:
+        return jsonify({"error": "Missing prompt or image_url"}), 400
+    return _enqueue_job(thread, "animate", {"prompt": prompt, "image_url": image_url})
 
 
 @jobs_bp.route("/jobs/<string:job_id>")
