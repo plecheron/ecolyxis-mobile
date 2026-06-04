@@ -806,6 +806,148 @@ async function sendMessageViaJob(content, imagesToSend, mode) {
     }
 }
 
+// ===== Durable media jobs (image / edit / video) =====
+// Same resumable EventSource path as chat: generation runs in the worker, the
+// browser only subscribes. A drop auto-reconnects (Last-Event-ID) and the
+// artifact is persisted server-side, so media work survives disconnects too.
+
+function renderGeneratedImage(parent, data) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'generated-image-wrapper';
+    wrapper.setAttribute('data-image-id', data.image_id || '');
+    wrapper.setAttribute('data-seed', data.seed || '');
+    wrapper.setAttribute('data-width', data.width || 128);
+    wrapper.setAttribute('data-height', data.height || 128);
+    var img = document.createElement('img');
+    img.src = data.url;
+    img.className = 'generated-image';
+    img.style.maxWidth = '100%';
+    img.style.borderRadius = '8px';
+    img.style.marginTop = '8px';
+    img.style.cursor = 'pointer';
+    wrapper.appendChild(img);
+    var btnContainer = document.createElement('div');
+    btnContainer.className = 'upscale-btn-container';
+    var currentSize = data.width || 128;
+    var nextSize = currentSize < 512 ? currentSize * 2 : null;
+    if (nextSize) {
+        var b = document.createElement('button');
+        b.className = 'btn-upscale';
+        b.textContent = '⬆ Upscale to ' + nextSize + 'x' + nextSize;
+        b.onclick = function() { upscaleImage(wrapper, threadId); };
+        btnContainer.appendChild(b);
+    }
+    wrapper.appendChild(btnContainer);
+    parent.appendChild(wrapper);
+}
+
+function renderMediaResult(e) {
+    if (e.kind === 'video') {
+        var vidHtml = '<div class="generated-video-wrapper">'
+            + '<video controls autoplay loop playsinline style="max-width:100%;border-radius:8px;">'
+            + '<source src="' + e.url + '" type="video/mp4"></video>'
+            + '<div style="font-size:0.75rem;color:var(--text-muted,#8b949e);margin-top:4px;">'
+            + (e.width || '') + 'x' + (e.height || '') + ' · ' + (e.frames || '') + ' frames</div></div>';
+        addMessage("assistant", vidHtml);
+    } else {
+        var div = addMessage("assistant", "");
+        renderGeneratedImage(div.querySelector('.message-text'), e);
+    }
+}
+
+function updateMediaProgress(e) {
+    var fill = document.getElementById('job-progress-fill');
+    var label = document.getElementById('job-progress-label');
+    function setW(w) { if (fill) fill.style.width = w; }
+    function setL(t) { if (label) label.textContent = t; }
+    var s = e.stage;
+    if (s === 'starting') { setL('Starting…'); setW('5%'); }
+    else if (s === 'loading') { setL('Loading model…'); }
+    else if (s === 'encoding') { setL('Encoding prompt…'); setW('10%'); }
+    else if (s === 'diffusion') { var t = e.total_steps || 9; setL('Diffusion step ' + (e.step || 0) + '/' + t); setW(Math.round(5 + ((e.step || 0) / t) * 85) + '%'); }
+    else if (s === 'decoding') { setL('Decoding image…'); setW('95%'); }
+    else if (s === 'editing') { setL('Applying edit…'); setW('30%'); }
+    else if (s === 'queued') { setL('Queued…'); }
+    else if (s === 'sampling') { var t2 = e.total_steps || 1; setL('Generating frames… ' + (e.step || 0) + '/' + t2); setW(Math.round(10 + ((e.step || 0) / t2) * 55) + '%'); }
+    else if (s === 'sampling_done') { setL('Decoding video…'); setW('70%'); }
+    else if (s === 'vae_decode') { setL('Decoding video tiles…'); setW('75%'); }
+    else if (s === 'converting') { setL('Converting to MP4…'); setW('95%'); }
+}
+
+function streamMediaJob(jobId, kind) {
+    var tm = document.getElementById('thinking-msg');
+    var ind = tm ? tm.querySelector('.thinking-indicator') : null;
+    if (ind) {
+        ind.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="job-progress-fill"></div></div><div class="gen-progress-text"><span id="job-progress-label">Starting…</span><span id="job-progress-eta"></span></div></div>';
+    }
+    return new Promise(function(resolve) {
+        var settled = false;
+        var es = new EventSource("/jobs/" + jobId + "/stream");
+        function finish(x) {
+            if (settled) return;
+            settled = true;
+            es.close();
+            hideReconnectBanner();
+            resolve(x || {});
+        }
+        es.onmessage = function(ev) {
+            hideReconnectBanner();
+            var e;
+            try { e = JSON.parse(ev.data); } catch (_) { return; }
+            if (e.type === 'progress') {
+                updateMediaProgress(e);
+            } else if (e.type === 'done') {
+                removeThinking();
+                renderMediaResult(e);
+                finish({ done: true, result: e });
+            } else if (e.type === 'error') {
+                removeThinking();
+                addMessage("assistant", "⚠️ " + (e.message || "Generation failed"));
+                finish({ error: true });
+            }
+        };
+        es.onerror = function() {
+            if (settled) return;
+            if (es.readyState === EventSource.CLOSED) {
+                finish({ error: true, closed: true });
+            } else {
+                showReconnectBanner('⚠️ Connection lost — resuming…');
+            }
+        };
+    });
+}
+
+async function runMediaJob(kind, body) {
+    showThinking();
+    try {
+        var resp = await fetch("/jobs/" + kind + "/" + threadId, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (resp.status === 429) {
+            var b = await resp.json().catch(function() { return {}; });
+            removeThinking();
+            showRateLimitModal(b.message || "Rate limit reached.");
+            return;
+        }
+        if (!resp.ok) {
+            var b2 = await resp.json().catch(function() { return {}; });
+            removeThinking();
+            addMessage("assistant", "⚠️ " + (b2.error || "Could not start generation."));
+            return;
+        }
+        var data = await resp.json();
+        try { localStorage.setItem('ecolyxis_media_job', JSON.stringify({ threadId: threadId, jobId: data.job_id, kind: kind })); } catch (e) {}
+        await streamMediaJob(data.job_id, kind);
+        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
+    } catch (err) {
+        removeThinking();
+        addMessage("assistant", "⚠️ " + err.message);
+        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
+    }
+}
+
 async function sendMessage(e) {
     e.preventDefault();
     if (isStreaming) return;
@@ -857,6 +999,11 @@ async function sendMessage(e) {
     // Image generation mode (SSE streaming with progress)
     if (selectedMode === 'image') {
         removeThinking();
+        if (JOBS_ENABLED) {
+            await runMediaJob('image', { prompt: content, width: 512, height: 512 });
+            isStreaming = false; sendBtn.disabled = false; scrollToBottom();
+            return;
+        }
         try {
             showThinking();
             var thinkingMsg = document.getElementById("thinking-msg");
@@ -1003,6 +1150,13 @@ async function sendMessage(e) {
             sendBtn.disabled = false;
             return;
         }
+        if (JOBS_ENABLED) {
+            var rawB64 = imagesToSend[0].dataUrl;
+            var b64 = rawB64.split(',')[1] || rawB64;
+            await runMediaJob('edit', { image: b64, prompt: content });
+            isStreaming = false; sendBtn.disabled = false; scrollToBottom();
+            return;
+        }
         try {
             showThinking();
             var thinkingMsg = document.getElementById("thinking-msg");
@@ -1104,6 +1258,11 @@ async function sendMessage(e) {
     // Video generation mode (SSE streaming with progress)
     if (selectedMode === 'video') {
         removeThinking();
+        if (JOBS_ENABLED) {
+            await runMediaJob('video', { prompt: content, width: 480, height: 480, frames: 33 });
+            isStreaming = false; sendBtn.disabled = false; scrollToBottom();
+            return;
+        }
         try {
             showThinking();
             var thinkingMsg = document.getElementById("thinking-msg");
@@ -2115,6 +2274,37 @@ function reconnectToEdit(tid, jid) {
         showThinking();
         streamJob(info.jobId).then(function() {
             try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
+            isStreaming = false;
+            sendBtn.disabled = false;
+        });
+    }).catch(function() {});
+})();
+
+// Auto-resume an in-flight media generation (image/edit/video) on page load.
+(function() {
+    if (!JOBS_ENABLED) return;
+    var saved;
+    try { saved = localStorage.getItem('ecolyxis_media_job'); } catch (e) { return; }
+    if (!saved) return;
+    var info;
+    try { info = JSON.parse(saved); } catch (e) {
+        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e2) {}
+        return;
+    }
+    if (!info || info.threadId !== threadId || !info.jobId) {
+        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
+        return;
+    }
+    fetch("/jobs/" + info.jobId).then(function(r) { return r.ok ? r.json() : null; }).then(function(job) {
+        if (!job || (job.status !== 'queued' && job.status !== 'running')) {
+            try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
+            return;
+        }
+        isStreaming = true;
+        sendBtn.disabled = true;
+        showThinking();
+        streamMediaJob(info.jobId, info.kind).then(function() {
+            try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
             isStreaming = false;
             sendBtn.disabled = false;
         });
