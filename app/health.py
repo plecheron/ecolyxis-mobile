@@ -34,5 +34,14 @@ def check():
         status["checks"]["llm_api"] = f"error: {e}"
         status["status"] = "degraded"
 
+    # Redis (durable job queue + resumable event log)
+    try:
+        from app.redis_client import get_redis
+        get_redis().ping()
+        status["checks"]["redis"] = "ok"
+    except Exception as e:
+        status["checks"]["redis"] = f"error: {e}"
+        status["status"] = "degraded"
+
     code = 200 if status["status"] == "ok" else 503
     return jsonify(status), code

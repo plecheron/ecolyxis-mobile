@@ -24,6 +24,8 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Redis — durable job queue + resumable event log (see app/redis_client.py)
+    REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
     LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
     LLM_MODEL = "Qwen_Qwen3.6-35B-A3B-Q4_0.gguf"
     LLM_MAX_HISTORY = 20

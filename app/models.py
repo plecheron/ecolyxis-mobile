@@ -81,6 +81,9 @@ class Thread(db.Model):
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
+    # When an assistant message is produced by an async job, this links it back
+    # to that job. UNIQUE enforces exactly-once persistence across worker retries.
+    job_id = db.Column(db.String(36), db.ForeignKey("generation_job.id"), nullable=True, unique=True)
     role = db.Column(db.String(20), nullable=False)  # "user" or "assistant"
     content = db.Column(db.Text, nullable=False)
     tokens_used = db.Column(db.Integer, nullable=True)
@@ -222,9 +225,48 @@ class LLMQueueEntry(db.Model):
     )
 
 
+class GenerationJob(db.Model):
+    """Durable record of an async generation job (chat/image/video/edit/upscale/tts).
+
+    This row is the lifecycle source of truth; the live, resumable token/progress
+    stream lives in a Redis Stream keyed ``job:<id>:events``. A dedicated worker
+    process claims the job, runs it against the GPU backends, appends events to
+    Redis, and persists the final artifact (Message / GeneratedImage /
+    GeneratedVideo) keyed by ``job_id`` for exactly-once semantics.
+    """
+    __tablename__ = "generation_job"
+
+    KINDS = ("chat", "image", "video", "edit", "upscale", "tts")
+    TERMINAL = ("done", "error", "canceled")
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=True)
+    kind = db.Column(db.String(20), nullable=False)  # one of KINDS
+    status = db.Column(db.String(20), nullable=False, default="queued")  # queued|running|done|error|canceled
+    is_premium = db.Column(db.Boolean, nullable=False, default=False)
+    params = db.Column(db.JSON, nullable=True)   # request inputs needed to run the job
+    result = db.Column(db.JSON, nullable=True)   # {message_id, filename, tokens, ...}
+    error = db.Column(db.Text, nullable=True)
+    worker_id = db.Column(db.String(80), nullable=True)
+    heartbeat_at = db.Column(db.DateTime, nullable=True)  # last worker liveness tick
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.Index("idx_job_status", "status", "is_premium", "created_at"),
+        db.Index("idx_job_user", "user_id", "created_at"),
+    )
+
+    @property
+    def is_terminal(self):
+        return self.status in self.TERMINAL
+
+
 class GeneratedImage(db.Model):
     """Tracks generated images with seed/resolution for upscaling."""
     id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(36), db.ForeignKey("generation_job.id"), nullable=True, unique=True)
     message_id = db.Column(db.Integer, db.ForeignKey("message.id"), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
@@ -252,6 +294,7 @@ class GeneratedImage(db.Model):
 class GeneratedVideo(db.Model):
     """Tracks generated videos."""
     id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(36), db.ForeignKey("generation_job.id"), nullable=True, unique=True)
     message_id = db.Column(db.Integer, db.ForeignKey("message.id"), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False)
