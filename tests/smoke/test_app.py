@@ -23,9 +23,11 @@ def test_signup_page(client):
 
 
 def test_blueprints_registered(app):
+    # NB: "admin" is intentionally not registered here — it runs as a
+    # standalone controller service (see app/admin.disabled/).
     expected = {
-        "auth", "dashboard", "chat", "billing", "admin",
+        "auth", "dashboard", "chat", "billing",
         "contact", "api", "apikeys", "wallet", "blog",
-        "legal", "health", "pricing",
+        "legal", "health", "pricing", "jobs",
     }
     assert expected.issubset(set(app.blueprints.keys()))

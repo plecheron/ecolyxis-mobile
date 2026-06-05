@@ -377,7 +377,11 @@ def generate_image_stream(thread_id):
 
                 if event.get("stage") == "done" or event.get("error"):
                     break
-        except (req_lib.RequestException, GeneratorExit):
+        except req_lib.RequestException as e:
+            # Backend unreachable — surface the error to the client. The
+            # background watchdog still retries generation independently.
+            yield "data: " + json.dumps({"error": f"Image service unavailable: {e}"}) + "\n\n"
+        except GeneratorExit:
             # Client disconnected — generation continues in background thread
             pass
 
@@ -572,7 +576,9 @@ def upscale_image(thread_id):
 
                 if event.get("stage") == "done" or event.get("error"):
                     break
-        except (req_lib.RequestException, GeneratorExit):
+        except req_lib.RequestException as e:
+            yield "data: " + json.dumps({"error": f"Image service unavailable: {e}"}) + "\n\n"
+        except GeneratorExit:
             pass
 
     return Response(stream_upscale(), mimetype="text/event-stream",

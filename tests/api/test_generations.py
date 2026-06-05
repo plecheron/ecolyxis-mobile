@@ -297,9 +297,10 @@ class TestUpscaleImage:
 
     def test_already_max_size(self, client, db, make_user, login_as):
         user, thread = _setup_user_with_thread(db, make_user, login_as)
+        # 2048 is the largest entry in GeneratedImage.SIZES, so it has no next size.
         img = GeneratedImage(
             user_id=user.id, thread_id=thread.id, prompt="a forest",
-            seed=42, width=512, height=512, filename="max_img.png",
+            seed=42, width=2048, height=2048, filename="max_img.png",
         )
         db.session.add(img)
         db.session.commit()
