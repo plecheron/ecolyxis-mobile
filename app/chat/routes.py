@@ -202,6 +202,61 @@ def regenerate(thread_id):
     ))
 
 
+@chat_bp.route("/chat/<string:thread_id>/regenerate/<int:message_id>", methods=["POST"])
+@login_required
+def regenerate_at(thread_id, message_id):
+    """Regenerate a specific assistant message: delete it and every message after
+    it, then re-stream a fresh response from the truncated context."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    data = request.get_json(silent=True) or {}
+    mode = data.get("mode", "standard")
+
+    allowed, used, limit = check_rate_limit()
+    if not allowed:
+        return Response(
+            "data: " + json.dumps({
+                "error": "rate_limited",
+                "message": f"Free tier limit reached ({limit} messages per hour). Upgrade to Premium for unlimited.",
+                "used": used,
+                "limit": limit,
+            }) + "\n\n",
+            mimetype="text/event-stream",
+        )
+
+    target = Message.query.filter_by(
+        id=message_id, thread_id=thread.id, role="assistant"
+    ).first_or_404()
+
+    # Delete everything strictly after the target, then the target itself
+    # (mirrors the truncate-after pattern in edit_message, but avoids removing a
+    # preceding user message that happens to share the target's timestamp).
+    Message.query.filter(
+        Message.thread_id == thread.id,
+        Message.created_at > target.created_at,
+    ).delete(synchronize_session="fetch")
+    db.session.delete(target)
+    db.session.commit()
+
+    client = get_client()
+    msgs = client.build_messages(thread, mode=mode)
+
+    return _sse(_stream_llm(
+        client, msgs, mode, current_user.id, current_user.is_premium,
+        current_app._get_current_object()
+    ))
+
+
+@chat_bp.route("/chat/<string:thread_id>/message/<int:message_id>", methods=["DELETE"])
+@login_required
+def delete_message(thread_id, message_id):
+    """Delete a single message from a thread."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    msg = Message.query.filter_by(id=message_id, thread_id=thread.id).first_or_404()
+    db.session.delete(msg)
+    db.session.commit()
+    return ("", 204)
+
+
 @chat_bp.route("/chat/<string:thread_id>/compact", methods=["POST"])
 @login_required
 def compact_thread(thread_id):
