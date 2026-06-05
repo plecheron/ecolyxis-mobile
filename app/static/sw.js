@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ecolyxis-v7';
+const CACHE_NAME = 'ecolyxis-v8';
 const STATIC_ASSETS = [
     '/static/css/style.css',
     '/static/manifest.json',

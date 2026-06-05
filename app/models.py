@@ -50,6 +50,9 @@ class Thread(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     title = db.Column(db.String(200), default="New Chat")
     system_prompt = db.Column(db.Text, nullable=True)  # Custom system prompt (premium)
+    # Last mode selected in this thread (quick/standard/long/precise/image/edit/
+    # video/vision) — restored on load so the thread "remembers" its mode.
+    last_mode = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

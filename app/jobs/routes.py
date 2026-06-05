@@ -190,6 +190,25 @@ def submit_animate(thread_id):
     return _enqueue_job(thread, "animate", {"prompt": prompt, "image_url": image_url})
 
 
+@jobs_bp.route("/jobs/active")
+@login_required
+def active_jobs():
+    """All of the current user's in-flight jobs — drives the sidebar
+    "generating" indicators and resume-on-open of the live thinking stream."""
+    jobs = (
+        GenerationJob.query
+        .filter(GenerationJob.user_id == current_user.id)
+        .filter(GenerationJob.status.notin_(GenerationJob.TERMINAL))
+        .all()
+    )
+    return jsonify({
+        "jobs": [
+            {"job_id": j.id, "thread_id": j.thread_id, "kind": j.kind, "status": j.status}
+            for j in jobs
+        ]
+    })
+
+
 @jobs_bp.route("/jobs/<string:job_id>")
 @login_required
 def job_status(job_id):

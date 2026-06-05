@@ -183,6 +183,39 @@ def test_persist_is_idempotent(app, db, make_user, fake_redis, stub_llm):
         assert Message.query.filter_by(thread_id=thread_id, role="assistant").count() == 1
 
 
+# --- active jobs ----------------------------------------------------------
+
+def test_active_jobs_scoped_and_filtered(app, db, make_user, login_as, client, fake_redis):
+    me = make_user(email="me@example.com", username="me")
+    other = make_user(email="other@example.com", username="other")
+    t1, t2 = _thread(db, me), _thread(db, me)
+
+    running = GenerationJob(user_id=me.id, thread_id=t1.id, kind="chat",
+                            status="running", is_premium=False, params={})
+    queued = GenerationJob(user_id=me.id, thread_id=t2.id, kind="image",
+                           status="queued", is_premium=False, params={})
+    done = GenerationJob(user_id=me.id, thread_id=t1.id, kind="chat",
+                         status="done", is_premium=False, params={})
+    others = GenerationJob(user_id=other.id, thread_id=_thread(db, other).id, kind="chat",
+                           status="running", is_premium=False, params={})
+    db.session.add_all([running, queued, done, others])
+    db.session.commit()
+    running_id, queued_id = running.id, queued.id
+
+    login_as(me)
+    body = client.get("/jobs/active").get_json()
+    ids = {j["job_id"] for j in body["jobs"]}
+    # Only my non-terminal jobs — excludes my terminal job and the other user's.
+    assert ids == {running_id, queued_id}
+    kinds = {j["job_id"]: j["kind"] for j in body["jobs"]}
+    assert kinds[queued_id] == "image"
+
+
+def test_active_jobs_requires_login(app, db, client, fake_redis):
+    resp = client.get("/jobs/active")
+    assert resp.status_code in (302, 401)
+
+
 # --- resumable streaming --------------------------------------------------
 
 def test_stream_replays_and_resumes(app, db, make_user, login_as, client, fake_redis):

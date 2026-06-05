@@ -79,18 +79,20 @@
                     </div>
                 </div>
             </div>
+            {% set _sel = thread.last_mode or 'standard' %}
+            {% if _sel == 'vision' and not rate_info.is_premium %}{% set _sel = 'standard' %}{% endif %}
             <select class="model-select" id="model-select">
                 <optgroup label="💬 Chat Modes">
-                    <option value="quick">⚡ Quick — Fast, no thinking</option>
-                    <option value="standard" selected>🌿 Standard — Balanced</option>
-                    <option value="long">📖 Long — Extended context</option>
-                    <option value="precise">🎯 Precise — Plan → Draft → Refine</option>
+                    <option value="quick"{{ ' selected' if _sel == 'quick' }}>⚡ Quick — Fast, no thinking</option>
+                    <option value="standard"{{ ' selected' if _sel == 'standard' }}>🌿 Standard — Balanced</option>
+                    <option value="long"{{ ' selected' if _sel == 'long' }}>📖 Long — Extended context</option>
+                    <option value="precise"{{ ' selected' if _sel == 'precise' }}>🎯 Precise — Plan → Draft → Refine</option>
                 </optgroup>
                 <optgroup label="🎨 Media">
-                    <option value="image">🖼️ Image Generation</option>
-                    <option value="edit">✏️ Image Editing</option>
-                    <option value="video">🎬 Video Generation</option>
-                    {% if rate_info.is_premium %}<option value="vision">👁️ Vision — Image understanding</option>{% endif %}
+                    <option value="image"{{ ' selected' if _sel == 'image' }}>🖼️ Image Generation</option>
+                    <option value="edit"{{ ' selected' if _sel == 'edit' }}>✏️ Image Editing</option>
+                    <option value="video"{{ ' selected' if _sel == 'video' }}>🎬 Video Generation</option>
+                    {% if rate_info.is_premium %}<option value="vision"{{ ' selected' if _sel == 'vision' }}>👁️ Vision — Image understanding</option>{% endif %}
                 </optgroup>
             </select>
             <div class="chat-header-right">
@@ -111,7 +113,7 @@
         <div class="chat-messages" id="chat-messages">
             
         {% for msg in messages %}
-            <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
+            <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.job_id %} data-job-id="{{ msg.job_id }}"{% endif %}{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
                 <div class="message-avatar">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
                 <div class="message-content">
                     {% if msg.role == 'assistant' and msg.reasoning_tokens %}
@@ -250,6 +252,22 @@ var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, 
 
 function getSelectedMode() { return document.getElementById('model-select').value; }
 
+// Remember the selected mode on the thread (server-side) so it is restored on
+// next load. Debounced; fires only on real user changes (see the change
+// listener below), not the on-init onModeChange() call.
+let _modePersistTimer = null;
+function persistMode() {
+    clearTimeout(_modePersistTimer);
+    const mode = getSelectedMode();
+    _modePersistTimer = setTimeout(function() {
+        fetch('/chat/' + threadId + '/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        }).catch(function() {});
+    }, 300);
+}
+
 function updateContextWheel() {
     var total = 0;
     document.querySelectorAll('.message[data-tokens]').forEach(function(el) {
@@ -296,6 +314,7 @@ function onModeChange() {
 
 
 document.getElementById('model-select').addEventListener('change', onModeChange);
+document.getElementById('model-select').addEventListener('change', persistMode);
 onModeChange();
 
 function scrollToBottom() {
@@ -2355,37 +2374,69 @@ function reconnectToEdit(tid, jid) {
     }
 })();
 
-// Auto-resume an in-flight chat generation on page load (e.g. after a reload
-// while the worker was still streaming). The assistant message isn't in the DB
-// yet, so we replay the job's event log into a fresh bubble.
+// Cross-thread generation status. GenerationJob (server-side) is the source of
+// truth for in-flight work, so opening ANY actively-generating thread resumes
+// its live thinking stream — even one started in another tab/device — and the
+// sidebar marks which threads are currently working. Polled so indicators flip
+// off as jobs finish.
 (function() {
     if (!JOBS_ENABLED) return;
-    var saved;
-    try { saved = localStorage.getItem('ecolyxis_chat_job'); } catch (e) { return; }
-    if (!saved) return;
-    var info;
-    try { info = JSON.parse(saved); } catch (e) {
-        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e2) {}
-        return;
-    }
-    if (!info || info.threadId !== threadId || !info.jobId) {
-        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
-        return;
-    }
-    fetch("/jobs/" + info.jobId).then(function(r) { return r.ok ? r.json() : null; }).then(function(job) {
-        if (!job || (job.status !== 'queued' && job.status !== 'running')) {
-            try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
-            return;
-        }
-        isStreaming = true;
-        sendBtn.disabled = true;
-        showThinking();
-        streamJob(info.jobId).then(function() {
-            try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
-            isStreaming = false;
-            sendBtn.disabled = false;
+    var ACTIVE_POLL_MS = 4000;
+    var resumedJobs = {};
+    var pollTimer = null;
+
+    function applyGeneratingIndicators(jobs) {
+        var active = {};
+        jobs.forEach(function(j) { active[j.thread_id] = true; });
+        document.querySelectorAll('.thread-item').forEach(function(el) {
+            el.classList.toggle('generating', !!active[el.getAttribute('data-thread-id')]);
         });
-    }).catch(function() {});
+    }
+
+    function maybeResumeCurrentThread(jobs) {
+        if (isStreaming) return;
+        for (var i = 0; i < jobs.length; i++) {
+            var j = jobs[i];
+            if (j.thread_id !== threadId || j.kind !== 'chat' || resumedJobs[j.job_id]) continue;
+            resumedJobs[j.job_id] = true;
+            // Job already finished + persisted between render and now — its bubble
+            // is in history; don't replay a duplicate.
+            if (document.querySelector('.message[data-job-id="' + j.job_id + '"]')) continue;
+            isStreaming = true;
+            sendBtn.disabled = true;
+            showThinking();
+            streamJob(j.job_id).then(function() {
+                isStreaming = false;
+                sendBtn.disabled = false;
+            });
+            break;  // one active chat job per thread
+        }
+    }
+
+    function poll() {
+        fetch('/jobs/active')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data) return;
+                var jobs = data.jobs || [];
+                applyGeneratingIndicators(jobs);
+                maybeResumeCurrentThread(jobs);
+            })
+            .catch(function() {})
+            .finally(function() { schedule(); });
+    }
+
+    function schedule() {
+        clearTimeout(pollTimer);
+        if (document.hidden) return;  // paused while tab hidden; resumes on focus
+        pollTimer = setTimeout(poll, ACTIVE_POLL_MS);
+    }
+
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) poll();
+    });
+
+    poll();  // initial: resume current thread's live stream + paint sidebar
 })();
 
 // Auto-resume an in-flight media generation (image/edit/video) on page load.

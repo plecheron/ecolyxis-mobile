@@ -26,6 +26,11 @@ from app.chat import (
 )
 
 
+# Modes selectable in the chat header dropdown (chat + media). Used to validate
+# the per-thread remembered mode.
+VALID_MODES = {"quick", "standard", "long", "precise", "image", "edit", "video", "vision"}
+
+
 @chat_bp.route("/chat/<string:thread_id>")
 @login_required
 def view(thread_id):
@@ -556,6 +561,20 @@ def rename_thread(thread_id):
     thread.title = new_title
     db.session.commit()
     return {"status": "ok", "title": thread.title}
+
+
+@chat_bp.route("/chat/<string:thread_id>/mode", methods=["POST"])
+@login_required
+def set_mode(thread_id):
+    """Remember the mode last selected in this thread, restored on next load."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    data = request.get_json(silent=True) or {}
+    mode = (data.get("mode") or "").strip()
+    if mode not in VALID_MODES:
+        return {"error": "Invalid mode"}, 400
+    thread.last_mode = mode
+    db.session.commit()
+    return ("", 204)
 
 
 @chat_bp.route("/chat/<string:thread_id>/system-prompt", methods=["POST"])
