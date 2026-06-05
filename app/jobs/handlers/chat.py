@@ -14,7 +14,7 @@ from app import db
 from app.models import Thread, Message
 
 
-def _persist_assistant(job, text, tokens):
+def _persist_assistant(job, text, tokens, reasoning_tokens=0):
     """Insert the assistant message exactly once for this job. Returns its id."""
     existing = Message.query.filter_by(job_id=job.id).first()
     if existing:
@@ -24,6 +24,7 @@ def _persist_assistant(job, text, tokens):
         role="assistant",
         content=text,
         tokens_used=tokens,
+        reasoning_tokens=reasoning_tokens or None,
         job_id=job.id,
     )
     db.session.add(msg)
@@ -58,6 +59,7 @@ def run_chat(app, job, publish):
     text = ""
     prompt_tokens = 0
     completion_tokens = 0
+    reasoning_tokens = 0
 
     if precise:
         text, prompt_tokens, completion_tokens = _run_precise(client, msgs, "standard")
@@ -69,9 +71,14 @@ def run_chat(app, job, publish):
                 if "thinking_start" in chunk:
                     if show_thinking:
                         publish({"type": "thinking_start"})
-                elif "thinking_end" in chunk:
+                elif "thinking_progress" in chunk:
+                    reasoning_tokens = chunk["thinking_progress"]
                     if show_thinking:
-                        publish({"type": "thinking_end"})
+                        publish({"type": "thinking_progress", "tokens": reasoning_tokens})
+                elif "thinking_end" in chunk:
+                    reasoning_tokens = chunk.get("tokens", reasoning_tokens)
+                    if show_thinking:
+                        publish({"type": "thinking_end", "tokens": reasoning_tokens})
                 else:
                     prompt_tokens = chunk.get("prompt_tokens", prompt_tokens)
                     completion_tokens = chunk.get("completion_tokens", completion_tokens)
@@ -79,11 +86,12 @@ def run_chat(app, job, publish):
                 text += chunk
                 publish({"type": "content", "text": chunk})
 
-    message_id = _persist_assistant(job, text, completion_tokens)
+    message_id = _persist_assistant(job, text, completion_tokens, reasoning_tokens)
 
     return {
         "message_id": message_id,
         "tokens": completion_tokens,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "reasoning_tokens": reasoning_tokens,
     }

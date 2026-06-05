@@ -114,6 +114,9 @@
             <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
                 <div class="message-avatar">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
                 <div class="message-content">
+                    {% if msg.role == 'assistant' and msg.reasoning_tokens %}
+                    <div class="thinking-chip">💭 Thought for {{ msg.reasoning_tokens }} tokens</div>
+                    {% endif %}
                     <div class="message-text">{{ msg.content | render_message }}</div>
                     {% if msg.role == 'user' %}
                     <button class="msg-action btn-edit" onclick="startEdit({{ msg.id }})" title="Edit message">✏️</button>
@@ -377,6 +380,29 @@ function showThinking() {
 function removeThinking() {
     const el = document.getElementById("thinking-msg");
     if (el) el.remove();
+}
+
+// Live "still thinking" indicator: show a running reasoning-token count in the
+// thinking bubble (no reasoning text is ever shown). n<=0 falls back to plain
+// "Thinking…".
+function updateThinkingCount(n) {
+    const tm = document.getElementById("thinking-msg");
+    const ind = tm ? tm.querySelector(".thinking-indicator") : null;
+    if (!ind) return;
+    const label = n > 0 ? ("Thinking… " + n + " tokens") : "Thinking…";
+    ind.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>' + label;
+}
+
+// When the answer begins, the thinking bubble collapses to a small static chip
+// above the answer recording how many reasoning tokens were spent.
+function attachThinkingChip(textEl, n) {
+    if (!textEl || !n || n <= 0) return;
+    const content = textEl.closest('.message-content');
+    if (!content || content.querySelector('.thinking-chip')) return;
+    const chip = document.createElement('div');
+    chip.className = 'thinking-chip';
+    chip.textContent = '💭 Thought for ' + n + ' tokens';
+    content.insertBefore(chip, content.firstChild);
 }
 
 function handleKey(e) {
@@ -698,6 +724,7 @@ function streamJob(jobId, opts) {
         let textEl = opts.textEl || null;
         let fullResponse = opts.initialText || "";
         let promptTokens = 0, completionTokens = 0;
+        let reasoningTokens = opts.reasoningTokens || 0;
         const startTime = performance.now();
         let settled = false;
         const es = new EventSource("/jobs/" + jobId + "/stream");
@@ -717,13 +744,20 @@ function streamJob(jobId, opts) {
             const t = event.type;
             if (t === "thinking_start") {
                 isThinking = true;
+                updateThinkingCount(reasoningTokens);
+            } else if (t === "thinking_progress") {
+                isThinking = true;
+                reasoningTokens = event.tokens || reasoningTokens;
+                updateThinkingCount(reasoningTokens);
             } else if (t === "thinking_end") {
                 isThinking = false;
+                reasoningTokens = event.tokens || reasoningTokens;
             } else if (t === "content") {
                 if (!textEl) {
                     removeThinking();
                     const div = addMessage("assistant", "", false);
                     textEl = div.querySelector(".message-text");
+                    attachThinkingChip(textEl, reasoningTokens);
                 }
                 fullResponse += (event.text || "");
                 textEl.innerHTML = renderStreamingMd(fullResponse);
@@ -732,6 +766,8 @@ function streamJob(jobId, opts) {
             } else if (t === "done") {
                 promptTokens = event.prompt_tokens || 0;
                 completionTokens = event.completion_tokens || event.tokens || 0;
+                reasoningTokens = event.reasoning_tokens || reasoningTokens;
+                attachThinkingChip(textEl, reasoningTokens);
                 finalizeAssistant(textEl, fullResponse, promptTokens, completionTokens, startTime);
                 finish({ done: true });
             } else if (t === "error") {

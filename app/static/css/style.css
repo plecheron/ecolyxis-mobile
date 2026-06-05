@@ -1008,6 +1008,19 @@ a:hover {
     40% { opacity: 1; transform: scale(1); }
 }
 
+/* Collapsed reasoning chip — how many "thinking" tokens were spent before
+   the answer. The reasoning text itself is never shown or stored. */
+.thinking-chip {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--bg-muted, rgba(127, 127, 127, 0.12));
+    border-radius: 10px;
+    padding: 2px 8px;
+    margin-bottom: 6px;
+    user-select: none;
+}
+
 /* Streaming Cursor */
 .streaming-cursor::after {
     content: '▊';

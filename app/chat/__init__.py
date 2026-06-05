@@ -184,11 +184,16 @@ def _stream_llm(client, messages, mode, user_id, is_premium, app,
             completion_tokens = 0
             for chunk in client.stream_chat(messages, mode=mode):
                 if isinstance(chunk, dict):
-                    if show_thinking and "thinking_start" in chunk:
-                        yield f"data: {json.dumps({'thinking_start': True})}\n\n"
-                    elif show_thinking and "thinking_end" in chunk:
-                        yield f"data: {json.dumps({'thinking_end': True})}\n\n"
-                    elif "thinking_start" not in chunk and "thinking_end" not in chunk:
+                    if "thinking_start" in chunk:
+                        if show_thinking:
+                            yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_progress" in chunk:
+                        if show_thinking:
+                            yield f"data: {json.dumps({'thinking_progress': chunk['thinking_progress']})}\n\n"
+                    elif "thinking_end" in chunk:
+                        if show_thinking:
+                            yield f"data: {json.dumps({'thinking_end': True, 'tokens': chunk.get('tokens', 0)})}\n\n"
+                    else:
                         prompt_tokens = chunk.get("prompt_tokens", 0)
                         completion_tokens = chunk.get("completion_tokens", 0)
                 else:

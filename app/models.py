@@ -87,6 +87,10 @@ class Message(db.Model):
     role = db.Column(db.String(20), nullable=False)  # "user" or "assistant"
     content = db.Column(db.Text, nullable=False)
     tokens_used = db.Column(db.Integer, nullable=True)
+    # Reasoning ("thinking") tokens spent before the answer — text is never
+    # stored, only the count, so the collapsed "Thought for N tokens" chip
+    # survives a reload / shows in history.
+    reasoning_tokens = db.Column(db.Integer, nullable=True)
     message_type = db.Column(db.String(10), default="text", nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 

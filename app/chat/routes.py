@@ -263,6 +263,8 @@ def compact_thread(thread_id):
                 if isinstance(chunk, dict):
                     if "thinking_start" in chunk:
                         yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_progress" in chunk:
+                        pass  # token count not surfaced for compaction summaries
                     elif "thinking_end" in chunk:
                         yield f"data: {json.dumps({'thinking_end': True})}\n\n"
                     else:
@@ -368,6 +370,8 @@ def compact_progressive(thread_id):
                 if isinstance(chunk, dict):
                     if "thinking_start" in chunk:
                         yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_progress" in chunk:
+                        pass  # token count not surfaced for compaction summaries
                     elif "thinking_end" in chunk:
                         yield f"data: {json.dumps({'thinking_end': True})}\n\n"
                     else:

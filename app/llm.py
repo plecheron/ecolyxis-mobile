@@ -1,7 +1,14 @@
 import requests
 import logging
 import json
+import time
 logger = logging.getLogger('ecolyxis.llm')
+
+# Throttle for live thinking-token progress: emit at most every N reasoning
+# deltas or every T seconds, whichever comes first. Keeps the durable Redis
+# event stream lean (reasoning can run to thousands of tokens).
+_THINK_EMIT_EVERY_TOKENS = 16
+_THINK_EMIT_EVERY_SECONDS = 0.2
 
 
 class LLMClient:
@@ -19,7 +26,11 @@ class LLMClient:
         mode: "standard" (64k, 4 parallel), "long" (200k, 1 parallel), "vision" (64k, mmproj),
               "quick" (64k, 4 parallel, no thinking)
         Sends X-Context-Mode header to trigger the proxy to switch to the right config.
-        Thinking tokens (reasoning_content) are counted but not yielded to callers.
+        Thinking tokens (reasoning_content) text is never yielded, but a running
+        count is: ``{"thinking_start": True}`` on the first reasoning delta,
+        throttled ``{"thinking_progress": n}`` updates as it reasons, and
+        ``{"thinking_end": True, "tokens": n}`` when the answer begins. This drives
+        a live "still thinking — N tokens" indicator without exposing the reasoning.
         """
         url = f"{self.base_url}/chat/completions"
         enable_thinking = mode != "quick"
@@ -38,6 +49,9 @@ class LLMClient:
         if proxy_mode != "standard":
             headers["X-Context-Mode"] = proxy_mode
         thinking_active = False
+        reasoning_count = 0
+        last_emit_count = 0
+        last_emit_t = 0.0
         try:
             resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
             if resp.status_code >= 400:
@@ -71,18 +85,34 @@ class LLMClient:
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     reasoning = delta.get("reasoning_content", "")
                     content = delta.get("content") or ""
-                    # Track thinking state — yield markers but not thinking text
+                    # Track thinking state — yield a running token count (a proxy:
+                    # one streamed reasoning delta ≈ one token) but never the text.
                     if reasoning:
                         if not thinking_active:
                             thinking_active = True
+                            reasoning_count = 0
+                            last_emit_count = 0
+                            last_emit_t = time.monotonic()
                             yield {"thinking_start": True}
+                        reasoning_count += 1
+                        now = time.monotonic()
+                        if (reasoning_count - last_emit_count >= _THINK_EMIT_EVERY_TOKENS
+                                or now - last_emit_t >= _THINK_EMIT_EVERY_SECONDS):
+                            last_emit_count = reasoning_count
+                            last_emit_t = now
+                            yield {"thinking_progress": reasoning_count}
                     if content:
                         if thinking_active:
                             thinking_active = False
-                            yield {"thinking_end": True}
+                            yield {"thinking_end": True, "tokens": reasoning_count}
                         yield content
                 except json.JSONDecodeError:
                     continue
+            # Reasoning ran to the end of the stream without any answer content
+            # (rare) — still close out the indicator with the final count.
+            if thinking_active:
+                thinking_active = False
+                yield {"thinking_end": True, "tokens": reasoning_count}
         except (requests.RequestException, requests.ConnectionError) as e:
             logger.error("LLM backend error: %s", e)
             yield f"\n\n⚠️ Error contacting LLM: {e}"

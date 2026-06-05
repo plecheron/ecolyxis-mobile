@@ -117,6 +117,53 @@ def test_worker_runs_job_and_persists(app, db, make_user, fake_redis, stub_llm):
         assert db.session.get(GenerationJob, job_id).status == "done"
 
 
+def test_thinking_progress_emitted_and_persisted(app, db, make_user, fake_redis, monkeypatch):
+    """The live thinking-token count is forwarded as events and the final count
+    is persisted on the assistant message (text is never stored)."""
+    from app.jobs.worker import run_job
+    from app.jobs import read_events
+
+    class ThinkingClient:
+        def build_messages(self, thread, mode="standard"):
+            return [{"role": "user", "content": "hi"}]
+
+        def stream_chat(self, msgs, mode="standard"):
+            yield {"thinking_start": True}
+            yield {"thinking_progress": 12}
+            yield {"thinking_progress": 31}
+            yield {"thinking_end": True, "tokens": 42}
+            yield "Answer"
+            yield {"prompt_tokens": 9, "completion_tokens": 1}
+
+    import app.chat as chatmod
+    monkeypatch.setattr(chatmod, "get_client", lambda: ThinkingClient())
+
+    user = make_user()
+    thread = _thread(db, user)
+    db.session.add(Message(thread_id=thread.id, role="user", content="hi"))
+    db.session.commit()
+    job = GenerationJob(user_id=user.id, thread_id=thread.id, kind="chat",
+                        status="queued", is_premium=False, params={"mode": "standard"})
+    db.session.add(job)
+    db.session.commit()
+    job_id, thread_id = job.id, thread.id
+
+    run_job(app, "w-t0", job_id)
+
+    events = [e for _, e in read_events(job_id, last_id="0", block_ms=50)]
+    progress = [e["tokens"] for e in events if e["type"] == "thinking_progress"]
+    assert progress == [12, 31]  # forwarded, monotonic
+    end = [e for e in events if e["type"] == "thinking_end"]
+    assert end and end[0]["tokens"] == 42
+    done = [e for e in events if e["type"] == "done"][0]
+    assert done["reasoning_tokens"] == 42
+
+    with app.app_context():
+        msg = Message.query.filter_by(thread_id=thread_id, role="assistant").one()
+        assert msg.content == "Answer"
+        assert msg.reasoning_tokens == 42
+
+
 def test_persist_is_idempotent(app, db, make_user, fake_redis, stub_llm):
     from app.jobs.worker import run_job
     user = make_user()
