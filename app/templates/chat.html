@@ -110,29 +110,37 @@
             <div class="rate-limit-fill" style="width: {{ (rate_info.used / rate_info.limit * 100)|int }}%"></div>
         </div>
         {% endif %}
-        <div class="chat-messages" id="chat-messages">
-            
+        {#- Unified message action toolbar. Mirrors buildActions() in JS so that
+            freshly-sent and server-rendered messages share identical markup. -#}
+        {% macro msg_actions(role, msg_id, is_last) %}
+                    <div class="msg-actions" role="group" aria-label="Message actions">
+                    {%- if role == 'user' %}
+                        <button type="button" class="msg-action btn-edit" onclick="startEdit({{ msg_id }})" title="Edit message" aria-label="Edit message">✏️</button>
+                    {%- endif %}
+                        <button type="button" class="msg-action btn-copy" onclick="copyMessage(this)" title="Copy message" aria-label="Copy message">📋</button>
+                    {%- if role == 'assistant' %}
+                        <button type="button" class="msg-action btn-tts" onclick="speakMessage({{ msg_id }}, this)" title="Read aloud" aria-label="Read message aloud">🔊</button>
+                        <button type="button" class="msg-action btn-regenerate" onclick="regenerateMessage({{ msg_id }})" title="Regenerate this response (discards messages after it)" aria-label="Regenerate response">🔄</button>
+                    {%- endif %}
+                        <button type="button" class="msg-action btn-delete" onclick="deleteMessage({{ msg_id }}, this)" title="Delete message" aria-label="Delete message">🗑️</button>
+                    </div>
+        {% endmacro %}
+        <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
+
         {% for msg in messages %}
             <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.job_id %} data-job-id="{{ msg.job_id }}"{% endif %}{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
-                <div class="message-avatar">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
+                <div class="message-avatar" aria-hidden="true">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
                 <div class="message-content">
                     {% if msg.role == 'assistant' and msg.reasoning_tokens %}
                     <div class="thinking-chip">💭 Thought for {{ msg.reasoning_tokens }} tokens</div>
                     {% endif %}
                     <div class="message-text">{{ msg.content | render_message }}</div>
-                    {% if msg.role == 'user' %}
-                    <button class="msg-action btn-edit" onclick="startEdit({{ msg.id }})" title="Edit message">✏️</button>
-                    {% endif %}
                     {% if msg.tokens_used and current_user.is_premium %}
-                    <span class="msg-tokens">⚡ {{ msg.tokens_used }} tokens</span>
+                    <span class="msg-tokens" title="Tokens used to generate this message">⚡ {{ msg.tokens_used }} tokens</span>
                     {% endif %}
+                    <div class="msg-meta"><time class="msg-time" datetime="{{ msg.created_at.isoformat() }}Z" title="{{ msg.created_at.strftime('%Y-%m-%d %H:%M UTC') }}"></time></div>
+                    {{ msg_actions(msg.role, msg.id, loop.last) }}
                 </div>
-                {% if msg.role == 'assistant' %}
-                <button class="msg-action btn-tts" onclick="speakMessage({{ msg.id }}, this)" title="Read aloud">🔊</button>
-                {% endif %}
-                {% if msg.role == 'assistant' and loop.last %}
-                <button class="msg-action btn-regenerate" onclick="regenerateLast()" title="Regenerate response">🔄</button>
-                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -152,6 +160,9 @@
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
                     </button>
+                    <button type="button" id="stop-btn" title="Stop generating" aria-label="Stop generating" style="display:none" onclick="stopGenerating()">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    </button>
                 </div>
             </form>
         </div>
@@ -170,8 +181,35 @@ const isPremium = {{ 'true' if rate_info.is_premium else 'false' }};
 const JOBS_ENABLED = {{ 'true' if jobs_enabled else 'false' }};
 let isStreaming = false;
 let isThinking = false;
+let currentJobES = null;   // active durable-job EventSource, for Stop
+let stopRequested = false; // set by stopGenerating(); checked by legacy reader loops
 
 marked.setOptions({ breaks: true, gfm: true });
+
+// Stop the current generation from the client's view. The durable worker still
+// finishes and persists server-side (same as a disconnect), so reopening the
+// thread shows the completed answer.
+function stopGenerating() {
+    stopRequested = true;
+    isStreaming = false;          // set before closing so the fetch wrapper won't auto-reconnect
+    if (currentJobES) { try { currentJobES.close(); } catch (e) {} currentJobES = null; }
+    removeThinking();
+    sendBtn.disabled = false;
+    var sb = document.getElementById('stop-btn');
+    if (sb) sb.style.display = 'none';
+    finalizeMessages();
+}
+
+// Show the Stop button while the send button is disabled (i.e. while streaming),
+// without having to touch every isStreaming toggle site.
+(function() {
+    var sb = document.getElementById('stop-btn');
+    if (!sb || !sendBtn) return;
+    new MutationObserver(function() {
+        if (sendBtn.disabled) { stopRequested = false; sb.style.display = 'flex'; }
+        else { sb.style.display = 'none'; }
+    }).observe(sendBtn, { attributes: true, attributeFilter: ['disabled'] });
+})();
 
 // ===== Image Upload State =====
 const MAX_IMAGES = 4;
@@ -318,7 +356,19 @@ document.getElementById('model-select').addEventListener('change', persistMode);
 onModeChange();
 
 function scrollToBottom() {
+    userPinned = true;
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Scroll anchoring: only auto-scroll while streaming if the user is already
+// near the bottom, so scrolling up to re-read isn't yanked back on each token.
+let userPinned = true;
+function isPinnedToBottom() {
+    return (messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight) < 80;
+}
+messagesDiv.addEventListener('scroll', function() { userPinned = isPinnedToBottom(); });
+function maybeScroll() {
+    if (userPinned) messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 function escapeHtml(text) {
@@ -368,21 +418,42 @@ function showRateLimitModal(message) {
     document.body.appendChild(modal);
 }
 
+// Build the unified action toolbar. Mirrors the msg_actions() Jinja macro so
+// freshly-sent and server-rendered messages share identical markup.
+function buildActions(role, msgId, isLast) {
+    const id = msgId || 0;
+    let btns = '';
+    if (role === 'user') {
+        btns += '<button type="button" class="msg-action btn-edit" onclick="startEdit(' + id + ')" title="Edit message" aria-label="Edit message">✏️</button>';
+    }
+    btns += '<button type="button" class="msg-action btn-copy" onclick="copyMessage(this)" title="Copy message" aria-label="Copy message">📋</button>';
+    if (role === 'assistant') {
+        btns += '<button type="button" class="msg-action btn-tts" onclick="speakMessage(' + id + ', this)" title="Read aloud" aria-label="Read message aloud">🔊</button>';
+        btns += '<button type="button" class="msg-action btn-regenerate" onclick="regenerateMessage(' + id + ')" title="Regenerate this response (discards messages after it)" aria-label="Regenerate response">🔄</button>';
+    }
+    btns += '<button type="button" class="msg-action btn-delete" onclick="deleteMessage(' + id + ', this)" title="Delete message" aria-label="Delete message">🗑️</button>';
+    return '<div class="msg-actions" role="group" aria-label="Message actions">' + btns + '</div>';
+}
+
+function metaHtml() {
+    var t = new Date();
+    return '<div class="msg-meta"><time class="msg-time" datetime="' + t.toISOString() +
+        '" title="' + t.toLocaleString() + '"></time></div>';
+}
+
 function addMessage(role, content, isMarkdown, msgId) {
     const div = document.createElement("div");
     div.className = "message message-" + role;
     if (msgId) div.dataset.msgId = msgId;
     const icon = role === "user" ? "👤" : "🌿";
     const display = isMarkdown ? renderMd(content) : escapeHtml(content);
-    let actions = '';
-    if (role === 'user') {
-        actions = '<button class="msg-action btn-edit" onclick="startEdit(' + (msgId || 0) + ')" title="Edit message">✏️</button>';
-    }
-    if (role === 'assistant' && msgId) {
-        actions += '<button class="msg-action btn-tts" onclick="speakMessage(' + msgId + ', this)" title="Read aloud">🔊</button>';
-    }
-    div.innerHTML = '<div class="message-avatar">' + icon + '</div><div class="message-content"><div class="message-text">' + display + '</div>' + actions + '</div>';
+    div.innerHTML = '<div class="message-avatar" aria-hidden="true">' + icon +
+        '</div><div class="message-content"><div class="message-text">' + display + '</div>' +
+        metaHtml() + buildActions(role, msgId, role === 'assistant') + '</div>';
     messagesDiv.appendChild(div);
+    decorateCodeBlocks(div);
+    decorateImages(div);
+    refreshTimes(div);
     scrollToBottom();
     return div;
 }
@@ -391,7 +462,7 @@ function showThinking() {
     const div = document.createElement("div");
     div.className = "message message-assistant";
     div.id = "thinking-msg";
-    div.innerHTML = '<div class="message-avatar">🌿</div><div class="message-content"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...</div></div>';
+    div.innerHTML = '<div class="message-avatar" aria-hidden="true">🌿</div><div class="message-content"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...</div></div>';
     messagesDiv.appendChild(div);
     scrollToBottom();
 }
@@ -437,19 +508,180 @@ function autoResize() {
 }
 chatInput.addEventListener("input", autoResize);
 
-function updateRegenerateButton() {
-    document.querySelectorAll('.btn-regenerate').forEach(b => b.remove());
-    const assistantMsgs = document.querySelectorAll('.message-assistant');
-    if (assistantMsgs.length > 0) {
-        const last = assistantMsgs[assistantMsgs.length - 1];
-        const btn = document.createElement('button');
-        btn.className = 'msg-action btn-regenerate';
-        btn.title = 'Regenerate response';
-        btn.textContent = '🔄';
-        btn.onclick = regenerateLast;
-        last.appendChild(btn);
+// Finalize all message cards: backfill the action toolbar + timestamp onto any
+// message div that was built manually during streaming, highlight code blocks,
+// and apply long-answer collapsing. Idempotent — safe to call repeatedly.
+function finalizeMessages() {
+    document.querySelectorAll('.message').forEach(function(div) {
+        if (div.id === 'thinking-msg' || div.classList.contains('message-system')) return;
+        const content = div.querySelector('.message-content');
+        if (!content || !content.querySelector('.message-text')) return;
+        const role = div.classList.contains('message-user') ? 'user' : 'assistant';
+        if (!content.querySelector('.msg-meta')) {
+            content.insertAdjacentHTML('beforeend', metaHtml());
+        }
+        if (!content.querySelector('.msg-actions')) {
+            content.insertAdjacentHTML('beforeend', buildActions(role, div.dataset.msgId, role === 'assistant'));
+        }
+        decorateCodeBlocks(div);
+        decorateImages(div);
+        applyCollapse(div);
+    });
+    refreshTimes(document);
+}
+// Back-compat alias for existing call sites.
+const updateRegenerateButton = finalizeMessages;
+
+// ===== Code-block decoration: syntax highlight + per-block copy + lang label =====
+function decorateCodeBlocks(scope) {
+    (scope || document).querySelectorAll('.message-text pre').forEach(function(pre) {
+        if (pre.dataset.decorated) return;
+        pre.dataset.decorated = '1';
+        var code = pre.querySelector('code');
+        if (code && window.hljs) {
+            try { hljs.highlightElement(code); } catch (e) {}
+            var m = (code.className || '').match(/language-([\w-]+)/);
+            if (m) {
+                var lbl = document.createElement('span');
+                lbl.className = 'code-lang';
+                lbl.textContent = m[1];
+                pre.appendChild(lbl);
+            }
+        }
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'code-copy';
+        btn.textContent = '📋';
+        btn.title = 'Copy code';
+        btn.setAttribute('aria-label', 'Copy code');
+        btn.onclick = function() {
+            navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(function() {
+                btn.textContent = '✓';
+                setTimeout(function() { btn.textContent = '📋'; }, 1500);
+            });
+        };
+        pre.appendChild(btn);
+    });
+}
+
+// ===== Generated-image decoration: seed·size caption + download =====
+function decorateImages(scope) {
+    (scope || document).querySelectorAll('.generated-image-wrapper').forEach(function(w) {
+        if (w.dataset.captioned) return;
+        w.dataset.captioned = '1';
+        var img = w.querySelector('img');
+        if (!img) return;
+        var seed = w.getAttribute('data-seed');
+        var ww = w.getAttribute('data-width');
+        var hh = w.getAttribute('data-height');
+        var bits = [];
+        if (ww && hh) bits.push(ww + '×' + hh);
+        if (seed) bits.push('seed ' + seed);
+        var meta = document.createElement('div');
+        meta.className = 'image-meta';
+        meta.innerHTML = (bits.length ? '<span>' + bits.join(' · ') + '</span>' : '<span></span>') +
+            '<a class="image-download" href="' + img.getAttribute('src') + '" download title="Download image" aria-label="Download image">⬇</a>';
+        w.appendChild(meta);
+    });
+}
+
+// ===== Copy a whole message to the clipboard =====
+function copyMessage(btn) {
+    var content = btn.closest('.message-content');
+    var textEl = content ? content.querySelector('.message-text') : null;
+    if (!textEl) return;
+    navigator.clipboard.writeText(textEl.innerText).then(function() {
+        var prev = btn.textContent;
+        btn.textContent = '✓';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = prev; btn.classList.remove('copied'); }, 1500);
+    });
+}
+
+// ===== Delete a single message =====
+async function deleteMessage(msgId, btn) {
+    if (!confirm('Delete this message?')) return;
+    var div = btn.closest('.message');
+    if (msgId) {
+        try {
+            var resp = await fetch('/chat/' + threadId + '/message/' + msgId, { method: 'DELETE' });
+            if (!resp.ok && resp.status !== 204) { alert('Could not delete message.'); return; }
+        } catch (e) { alert('Could not delete message.'); return; }
+    }
+    if (div) div.remove();
+    finalizeMessages();
+}
+
+// ===== Relative timestamps =====
+function relativeTime(d) {
+    var s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 45) return 'just now';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    var days = Math.floor(h / 24);
+    if (days < 7) return days + 'd ago';
+    return d.toLocaleDateString();
+}
+function refreshTimes(scope) {
+    (scope || document).querySelectorAll('time.msg-time').forEach(function(t) {
+        var iso = t.getAttribute('datetime');
+        if (!iso) return;
+        var d = new Date(iso);
+        if (!isNaN(d.getTime())) t.textContent = relativeTime(d);
+    });
+}
+setInterval(function() { refreshTimes(document); }, 60000);
+
+// ===== Long-answer collapsing =====
+var COLLAPSE_PX = 640;
+function applyCollapse(div) {
+    if (div.classList.contains('message-user')) return;
+    var textEl = div.querySelector('.message-text');
+    if (!textEl || div.querySelector('.collapse-toggle')) return;
+    if (textEl.scrollHeight > COLLAPSE_PX) {
+        div.classList.add('collapsible', 'collapsed');
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'collapse-toggle';
+        toggle.textContent = 'Show more';
+        toggle.onclick = function() {
+            var collapsed = div.classList.toggle('collapsed');
+            toggle.textContent = collapsed ? 'Show more' : 'Show less';
+        };
+        textEl.insertAdjacentElement('afterend', toggle);
     }
 }
+
+// ===== Error message card (distinct styling instead of inline ⚠️ text) =====
+function addErrorMessage(text) {
+    var div = addMessage('assistant', text, false);
+    div.classList.add('message-error');
+    return div;
+}
+
+// ===== Image lightbox (click a generated/edited image to zoom) =====
+function openLightbox(src) {
+    var ov = document.createElement('div');
+    ov.className = 'lightbox-overlay';
+    ov.onclick = function() { ov.remove(); };
+    var img = document.createElement('img');
+    img.src = src;
+    img.alt = 'Expanded image';
+    ov.appendChild(img);
+    document.body.appendChild(ov);
+}
+document.addEventListener('click', function(e) {
+    var im = e.target.closest && e.target.closest('.message-text img');
+    if (im && !e.target.closest('.lightbox-overlay')) openLightbox(im.src);
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var ov = document.querySelector('.lightbox-overlay');
+        if (ov) { ov.remove(); return; }
+    }
+});
 
 // ===== Context Menu =====
 function toggleCtxMenu(e) {
@@ -517,7 +749,7 @@ async function progressiveCompact() {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || stopRequested) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
@@ -529,7 +761,7 @@ async function progressiveCompact() {
                     const parsed = JSON.parse(data);
                     if (parsed.error) {
                         sysDiv.remove();
-                        addMessage('assistant', '⚠️ ' + parsed.error, false);
+                        addErrorMessage('⚠️ ' + parsed.error);
                         isStreaming = false;
                         sendBtn.disabled = false;
                         return;
@@ -554,7 +786,7 @@ async function progressiveCompact() {
                         }
                         fullResponse += parsed.content;
                         textEl.innerHTML = renderStreamingMd(fullResponse);
-                        scrollToBottom();
+                        maybeScroll();
                     }
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
@@ -581,7 +813,7 @@ async function progressiveCompact() {
         }
     } catch (err) {
         sysDiv.remove();
-        addMessage('assistant', '⚠️ Error: ' + err.message, false);
+        addErrorMessage('⚠️ Error: ' + err.message);
     }
 
     isStreaming = false;
@@ -593,7 +825,7 @@ async function compactConversation() {
     if (isStreaming) return;
     const msgCount = messagesDiv.querySelectorAll('.message').length;
     if (msgCount < 2) {
-        addMessage('assistant', '⚠️ Not enough messages to compact.', false);
+        addErrorMessage('⚠️ Not enough messages to compact.');
         return;
     }
 
@@ -626,7 +858,7 @@ async function compactConversation() {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || stopRequested) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
@@ -638,7 +870,7 @@ async function compactConversation() {
                     const parsed = JSON.parse(data);
                     if (parsed.error) {
                         sysDiv.remove();
-                        addMessage('assistant', '⚠️ ' + parsed.error, false);
+                        addErrorMessage('⚠️ ' + parsed.error);
                         isStreaming = false;
                         sendBtn.disabled = false;
                         return;
@@ -657,7 +889,7 @@ async function compactConversation() {
                         }
                         fullResponse += parsed.content;
                         textEl.innerHTML = renderStreamingMd(fullResponse);
-                        scrollToBottom();
+                        maybeScroll();
                     }
                     if (parsed.done && parsed.compacted) {
                         promptTokens = parsed.prompt_tokens || 0;
@@ -694,7 +926,7 @@ async function compactConversation() {
         }
     } catch (err) {
         sysDiv.remove();
-        addMessage('assistant', '⚠️ Error: ' + err.message, false);
+        addErrorMessage('⚠️ Error: ' + err.message);
     }
 
     isStreaming = false;
@@ -747,11 +979,13 @@ function streamJob(jobId, opts) {
         const startTime = performance.now();
         let settled = false;
         const es = new EventSource("/jobs/" + jobId + "/stream");
+        currentJobES = es;
 
         function finish(extra) {
             if (settled) return;
             settled = true;
             es.close();
+            if (currentJobES === es) currentJobES = null;
             hideReconnectBanner();
             resolve(Object.assign({ fullResponse, promptTokens, completionTokens, textEl }, extra || {}));
         }
@@ -781,7 +1015,7 @@ function streamJob(jobId, opts) {
                 fullResponse += (event.text || "");
                 textEl.innerHTML = renderStreamingMd(fullResponse);
                 textEl.classList.add('streaming-cursor');
-                scrollToBottom();
+                maybeScroll();
             } else if (t === "done") {
                 promptTokens = event.prompt_tokens || 0;
                 completionTokens = event.completion_tokens || event.tokens || 0;
@@ -791,7 +1025,7 @@ function streamJob(jobId, opts) {
                 finish({ done: true });
             } else if (t === "error") {
                 removeThinking();
-                addMessage("assistant", "⚠️ " + (event.message || "Generation failed"), false);
+                addErrorMessage("⚠️ " + (event.message || "Generation failed"));
                 finish({ error: true });
             }
         };
@@ -841,7 +1075,7 @@ async function sendMessageViaJob(content, imagesToSend, mode) {
         }
         if (!resp.ok) {
             removeThinking();
-            addMessage("assistant", "⚠️ Could not start generation.", false);
+            addErrorMessage("⚠️ Could not start generation.");
             return;
         }
         const data = await resp.json();
@@ -851,12 +1085,12 @@ async function sendMessageViaJob(content, imagesToSend, mode) {
         try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
         if (!result.fullResponse && !result.error) {
             removeThinking();
-            addMessage("assistant", "⚠️ No response received.", false);
+            addErrorMessage("⚠️ No response received.");
         }
         await maybeGenerateTitle(!!result.fullResponse);
     } catch (err) {
         removeThinking();
-        addMessage("assistant", "⚠️ Error: " + err.message, false);
+        addErrorMessage("⚠️ Error: " + err.message);
         try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
     }
 }
@@ -957,7 +1191,7 @@ function streamMediaJob(jobId, kind) {
                 finish({ done: true, result: e });
             } else if (e.type === 'error') {
                 removeThinking();
-                addMessage("assistant", "⚠️ " + (e.message || "Generation failed"));
+                addErrorMessage("⚠️ " + (e.message || "Generation failed"));
                 finish({ error: true });
             }
         };
@@ -989,7 +1223,7 @@ async function runMediaJob(kind, body) {
         if (!resp.ok) {
             var b2 = await resp.json().catch(function() { return {}; });
             removeThinking();
-            addMessage("assistant", "⚠️ " + (b2.error || "Could not start generation."));
+            addErrorMessage("⚠️ " + (b2.error || "Could not start generation."));
             return;
         }
         var data = await resp.json();
@@ -998,7 +1232,7 @@ async function runMediaJob(kind, body) {
         try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
     } catch (err) {
         removeThinking();
-        addMessage("assistant", "⚠️ " + err.message);
+        addErrorMessage("⚠️ " + err.message);
         try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
     }
 }
@@ -1084,7 +1318,7 @@ async function sendMessage(e) {
 
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done || stopRequested) break;
 
                 buffer += decoder.decode(value, { stream: true });
                 var lines = buffer.split('\n');
@@ -1099,7 +1333,7 @@ async function sendMessage(e) {
 
                     if (event.error) {
                         removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + event.error);
+                        addErrorMessage("\u26a0\ufe0f " + event.error);
                         imgData = { error: true };
                         break;
                     }
@@ -1184,11 +1418,11 @@ async function sendMessage(e) {
                 // Message saved server-side
             } else if (!imgData || !imgData.error) {
                 removeThinking();
-                addMessage("assistant", "\u26a0\ufe0f Image generation failed: no response");
+                addErrorMessage("\u26a0\ufe0f Image generation failed: no response");
             }
         } catch (err) {
             removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Image generation failed: " + err.message);
+            addErrorMessage("\u26a0\ufe0f Image generation failed: " + err.message);
         }
         isStreaming = false;
         sendBtn.disabled = false;
@@ -1200,7 +1434,7 @@ async function sendMessage(e) {
     if (selectedMode === 'edit') {
         removeThinking();
         if (imagesToSend.length === 0) {
-            addMessage("assistant", "\u26a0\ufe0f Please attach an image to edit.");
+            addErrorMessage("\u26a0\ufe0f Please attach an image to edit.");
             isStreaming = false;
             sendBtn.disabled = false;
             return;
@@ -1257,7 +1491,7 @@ async function sendMessage(e) {
                     if (eevent.error) {
                         localStorage.removeItem('ecolyxis_edit');
                         removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + eevent.error);
+                        addErrorMessage("\u26a0\ufe0f " + eevent.error);
                         editDone = true;
                         break;
                     }
@@ -1301,7 +1535,7 @@ async function sendMessage(e) {
             } else {
                 localStorage.removeItem('ecolyxis_edit');
                 removeThinking();
-                addMessage("assistant", "\u26a0\ufe0f Image editing failed: " + err.message);
+                addErrorMessage("\u26a0\ufe0f Image editing failed: " + err.message);
             }
         }
         isStreaming = false;
@@ -1356,7 +1590,7 @@ async function sendMessage(e) {
 
                     if (vevent.error) {
                         removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + vevent.error);
+                        addErrorMessage("\u26a0\ufe0f " + vevent.error);
                         vidDone = true;
                         break;
                     }
@@ -1402,7 +1636,7 @@ async function sendMessage(e) {
             }
         } catch (err) {
             removeThinking();
-            addMessage("assistant", "\u26a0\ufe0f Video generation failed: " + err.message);
+            addErrorMessage("\u26a0\ufe0f Video generation failed: " + err.message);
         }
         isStreaming = false;
         sendBtn.disabled = false;
@@ -1441,7 +1675,7 @@ async function sendMessage(e) {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || stopRequested) break;
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -1480,7 +1714,7 @@ async function sendMessage(e) {
                         fullResponse += parsed.content;
                         textEl.innerHTML = renderStreamingMd(fullResponse);
                         textEl.classList.add('streaming-cursor');
-                        scrollToBottom();
+                        maybeScroll();
                     }
                     if (parsed.done) {
                         promptTokens = parsed.prompt_tokens || 0;
@@ -1492,7 +1726,7 @@ async function sendMessage(e) {
 
         if (!fullResponse) {
             removeThinking();
-            addMessage("assistant", "⚠️ No response received.", false);
+            addErrorMessage("⚠️ No response received.");
         } else {
             textEl.classList.remove('streaming-cursor');
             textEl.innerHTML = renderMd(fullResponse);
@@ -1521,7 +1755,7 @@ async function sendMessage(e) {
         }
     } catch (err) {
         removeThinking();
-        addMessage("assistant", "⚠️ Error: " + err.message, false);
+        addErrorMessage("⚠️ Error: " + err.message);
     }
 
     // Save to DB
@@ -1655,7 +1889,7 @@ async function submitEdit(msgId) {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || stopRequested) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
@@ -1683,7 +1917,7 @@ async function submitEdit(msgId) {
                         }
                         fullResponse += parsed.content;
                         respTextEl.innerHTML = renderStreamingMd(fullResponse);
-                        scrollToBottom();
+                        maybeScroll();
                     }
                     if (parsed.done) {
                         promptTokens = parsed.prompt_tokens || 0;
@@ -1711,7 +1945,7 @@ async function submitEdit(msgId) {
         }
     } catch (err) {
         removeThinking();
-        addMessage("assistant", "⚠️ Error: " + err.message, false);
+        addErrorMessage("⚠️ Error: " + err.message);
     }
 
     if (fullResponse) {
@@ -1729,13 +1963,29 @@ async function submitEdit(msgId) {
     sendBtn.disabled = false;
 }
 
-// ===== Regenerate Last Response =====
-async function regenerateLast() {
+// ===== Regenerate a Response (last turn, or any earlier turn by id) =====
+async function regenerateLast() { return regenerateMessage(0); }
+async function regenerateMessage(msgId) {
     if (isStreaming) return;
 
     const assistantMsgs = document.querySelectorAll('.message-assistant');
     if (assistantMsgs.length === 0) return;
-    assistantMsgs[assistantMsgs.length - 1].remove();
+
+    let url = "/chat/" + threadId + "/regenerate";
+    const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
+    const target = msgId ? document.querySelector('.message[data-msg-id="' + msgId + '"]') : null;
+
+    if (target && target !== lastAssistant) {
+        // Regenerating an earlier turn discards every message after it.
+        if (!confirm('Regenerate this response? All messages after it will be removed.')) return;
+        url = "/chat/" + threadId + "/regenerate/" + msgId;
+        let node = target;
+        const toRemove = [];
+        while (node) { toRemove.push(node); node = node.nextElementSibling; }
+        toRemove.forEach(function(n) { if (n.classList && n.classList.contains('message')) n.remove(); });
+    } else {
+        lastAssistant.remove();
+    }
 
     isStreaming = true;
     sendBtn.disabled = true;
@@ -1749,7 +1999,7 @@ async function regenerateLast() {
     let firstTokenTime = null;
 
     try {
-        const resp = await fetch("/chat/" + threadId + "/regenerate", {
+        const resp = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ mode: document.getElementById('model-select').value })
@@ -1761,7 +2011,7 @@ async function regenerateLast() {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || stopRequested) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
@@ -1799,7 +2049,7 @@ async function regenerateLast() {
                         fullResponse += parsed.content;
                         textEl.innerHTML = renderStreamingMd(fullResponse);
                         textEl.classList.add('streaming-cursor');
-                        scrollToBottom();
+                        maybeScroll();
                     }
                     if (parsed.done) {
                         promptTokens = parsed.prompt_tokens || 0;
@@ -1827,7 +2077,7 @@ async function regenerateLast() {
         }
     } catch (err) {
         removeThinking();
-        addMessage("assistant", "⚠️ Error: " + err.message, false);
+        addErrorMessage("⚠️ Error: " + err.message);
     }
 
     if (fullResponse) {
@@ -2306,7 +2556,7 @@ function reconnectToEdit(tid, jid) {
                     if (ev.error) {
                         localStorage.removeItem('ecolyxis_edit');
                         removeThinking();
-                        addMessage("assistant", "\u26a0\ufe0f " + ev.error);
+                        addErrorMessage("\u26a0\ufe0f " + ev.error);
                         return;
                     }
                     if (ev.stage === 'editing') {
@@ -2353,7 +2603,7 @@ function reconnectToEdit(tid, jid) {
     }).catch(function(err) {
         localStorage.removeItem('ecolyxis_edit');
         removeThinking();
-        addMessage("assistant", "\u26a0\ufe0f Could not reconnect to edit: " + err.message);
+        addErrorMessage("\u26a0\ufe0f Could not reconnect to edit: " + err.message);
     });
 }
 

@@ -963,28 +963,55 @@ a:hover {
     background: var(--bg-input);
 }
 
-/* Message Actions */
+/* Message Actions — unified toolbar (replaces the old overlapping absolute buttons) */
+.msg-actions {
+    display: flex;
+    gap: 2px;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
 .msg-action {
-    position: absolute;
-    top: 0;
-    right: 0;
     background: none;
     border: none;
     cursor: pointer;
     font-size: 0.85rem;
-    opacity: 0;
-    transition: opacity 0.2s;
-    padding: 4px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+    padding: 4px 6px;
+    border-radius: 6px;
+    color: var(--text-muted);
 }
-.message:hover .msg-action {
+.msg-action:hover,
+.msg-action:focus-visible {
     opacity: 1;
+    background: var(--bg-input);
 }
+.msg-action.copied { color: var(--green-primary); opacity: 1; }
+/* On hover-capable (desktop) devices keep the toolbar hidden until hover/focus.
+   On touch devices (no hover) the toolbar stays visible so actions are reachable. */
+@media (hover: hover) {
+    .msg-actions { opacity: 0; transition: opacity 0.15s; }
+    .message:hover .msg-actions,
+    .message:focus-within .msg-actions { opacity: 1; }
+}
+
 .msg-tokens {
     display: block;
     font-size: 0.7rem;
     color: var(--text-muted);
     margin-top: 4px;
 }
+
+/* Per-message metadata row (timestamp) */
+.msg-meta {
+    margin-top: 4px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+.msg-time { cursor: default; }
 
 /* Token Warning/Danger */
 .message-tokens-warning .message-content {
@@ -993,6 +1020,135 @@ a:hover {
 .message-tokens-danger .message-content {
     border-left: 3px solid var(--danger);
 }
+
+/* Tinted user card + assistant avatar ring (turn differentiation) */
+.message-user .message-content {
+    background: rgba(46, 204, 113, 0.08);
+    border-color: rgba(46, 204, 113, 0.28);
+}
+.message-avatar {
+    border-radius: 50%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+}
+.message-assistant .message-avatar {
+    border-color: var(--green-primary);
+    box-shadow: 0 0 0 1px rgba(46, 204, 113, 0.35);
+}
+
+/* Error message card */
+.message-error .message-content {
+    background: rgba(248, 81, 73, 0.08);
+    border-color: rgba(248, 81, 73, 0.4);
+}
+
+/* Code blocks: language label + copy button */
+.message-text pre { position: relative; }
+.code-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    color: var(--text-secondary);
+}
+.message-text pre:hover .code-copy,
+.code-copy:focus-visible { opacity: 1; }
+.code-lang {
+    position: absolute;
+    top: 6px;
+    left: 10px;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Long-answer collapsing */
+.message.collapsible.collapsed .message-text {
+    max-height: 640px;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent);
+            mask-image: linear-gradient(to bottom, #000 78%, transparent);
+}
+.collapse-toggle {
+    margin-top: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.78rem;
+    padding: 4px 10px;
+}
+.collapse-toggle:hover { color: var(--text); }
+
+/* Card enter animation */
+@keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+.message { animation: msgIn 0.18s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+    .message { animation: none; }
+}
+
+/* Stop-generating button (mirrors #send-btn sizing) */
+#stop-btn {
+    align-items: center;
+    justify-content: center;
+    background: var(--danger);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #fff;
+}
+#stop-btn svg { width: 20px; height: 20px; }
+
+/* Image lightbox */
+.lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    cursor: zoom-out;
+    padding: 24px;
+}
+.lightbox-overlay img {
+    max-width: 95vw;
+    max-height: 95vh;
+    border-radius: var(--radius);
+}
+.message-text img { cursor: zoom-in; }
+
+/* Generated-image caption + download */
+.image-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+.image-download {
+    text-decoration: none;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 7px;
+}
+.image-download:hover { color: var(--text); background: var(--bg-input); }
 
 /* Thinking Indicator */
 .thinking-indicator {
