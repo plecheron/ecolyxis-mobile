@@ -1994,7 +1994,79 @@ scrollToBottom();
 
 
 // ===== Image Upscale =====
+// Durable, resumable in-place upscale via the worker/job path.
+function upscaleImageViaJob(wrapper, threadId) {
+    var imageId = wrapper.getAttribute('data-image-id');
+    var btnContainer = wrapper.querySelector('.upscale-btn-container');
+    if (!imageId || !btnContainer) return;
+
+    btnContainer.innerHTML = '<div class="gen-progress-container"><div class="gen-progress-bar-bg"><div class="gen-progress-bar-fill" id="upscale-fill-' + imageId + '" style="width:5%"></div></div><div class="gen-progress-text"><span id="upscale-label-' + imageId + '">Upscaling...</span></div></div>';
+
+    function setProgress(step, total) {
+        var pct = Math.round(5 + ((step || 0) / (total || 9)) * 85);
+        var fill = document.getElementById('upscale-fill-' + imageId);
+        var label = document.getElementById('upscale-label-' + imageId);
+        if (fill) fill.style.width = pct + '%';
+        if (label) label.textContent = 'Step ' + (step || 0) + '/' + (total || 9);
+    }
+    function fail(msg) {
+        btnContainer.innerHTML = '<span class="upscale-error">⚠ ' + msg + '</span>';
+    }
+
+    fetch("/jobs/upscale/" + threadId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_id: parseInt(imageId) })
+    }).then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().catch(function() { return {}; }).then(function(b) { fail(b.error || 'Upscale failed'); });
+        }
+        return resp.json().then(function(data) {
+            var es = new EventSource("/jobs/" + data.job_id + "/stream");
+            es.onmessage = function(ev) {
+                var e;
+                try { e = JSON.parse(ev.data); } catch (_) { return; }
+                if (e.type === 'progress') {
+                    if (e.stage === 'diffusion') setProgress(e.step, e.total_steps);
+                } else if (e.type === 'done') {
+                    es.close();
+                    var oldImg = wrapper.querySelector('img.generated-image');
+                    if (oldImg && e.url) oldImg.src = e.url;
+                    wrapper.setAttribute('data-image-id', e.image_id);
+                    wrapper.setAttribute('data-width', e.width);
+                    wrapper.setAttribute('data-height', e.height);
+                    var nextSize = e.width < 512 ? e.width * 2 : null;
+                    if (nextSize) {
+                        btnContainer.innerHTML = '';
+                        var b = document.createElement('button');
+                        b.className = 'btn-upscale';
+                        b.textContent = '⬆ Upscale to ' + nextSize + 'x' + nextSize;
+                        b.onclick = function() { upscaleImage(wrapper, threadId); };
+                        btnContainer.appendChild(b);
+                    } else {
+                        btnContainer.innerHTML = '<span class="upscale-max">✓ Max resolution</span>';
+                    }
+                } else if (e.type === 'error') {
+                    es.close();
+                    fail(e.message || 'Upscale failed');
+                }
+            };
+            es.onerror = function() {
+                // Transient drop: EventSource auto-reconnects (Last-Event-ID). The
+                // upscale runs + persists server-side regardless; on a hard close it
+                // will appear on the next page load.
+                if (es.readyState === EventSource.CLOSED) {
+                    var label = document.getElementById('upscale-label-' + imageId);
+                    if (label) label.textContent = 'Still upscaling — refresh to see result';
+                }
+            };
+        });
+    }).catch(function(err) { fail(err.message); });
+}
+
 function upscaleImage(wrapper, threadId) {
+    if (JOBS_ENABLED) { return upscaleImageViaJob(wrapper, threadId); }
+
     var imageId = wrapper.getAttribute('data-image-id');
     var btnContainer = wrapper.querySelector('.upscale-btn-container');
     if (!imageId || !btnContainer) return;
