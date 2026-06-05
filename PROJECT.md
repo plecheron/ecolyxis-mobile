@@ -52,8 +52,8 @@ A `JOBS_ENABLED` flag gates the cutover; the legacy in-request SSE paths remain 
 ## Database Models
 
 - **User** — accounts (password auth + passkeys), premium/subscription status, credit wallet
-- **Thread** — conversation containers per user (custom system prompt for premium)
-- **Message** — user/assistant messages; `job_id` links assistant messages to their producing job (UNIQUE)
+- **Thread** — conversation containers per user (custom system prompt for premium); `last_mode` remembers the chat/media mode last selected in the thread, restored on load
+- **Message** — user/assistant messages; `job_id` links assistant messages to their producing job (UNIQUE); `reasoning_tokens` records how many "thinking" tokens preceded the answer (count only — reasoning text is never stored)
 - **GenerationJob** — durable lifecycle record for every async generation (`kind`: chat/image/video/edit/upscale/animate; `status`, `params`, `result`, `worker_id`, `heartbeat_at`); the source of truth, with the live event stream in Redis
 - **GeneratedImage** — generated/edited/upscaled images (seed, size, upscale lineage); `job_id` (UNIQUE)
 - **GeneratedVideo** — generated/animated videos; `job_id` (UNIQUE)
@@ -68,6 +68,9 @@ A `JOBS_ENABLED` flag gates the cutover; the legacy in-request SSE paths remain 
 
 - User signup/login with password hashing + WebAuthn passkeys
 - Multi-thread chat with resumable SSE streaming (durable jobs)
+- **Per-thread mode memory** — each thread remembers its last selected mode (quick/standard/long/precise/image/edit/video/vision) server-side and restores it on load
+- **Live thinking-token counter** — while the model reasons, chat shows a running "Thinking… N tokens" count that collapses to a "Thought for N tokens" chip when the answer begins (reasoning text is never shown or stored)
+- **Cross-thread generation status** — threads generating in the background show a pulsing sidebar indicator, and opening any actively-generating thread resumes its live stream (server truth via `GET /jobs/active`, so it works across tabs/devices)
 - Image generation, image editing, image upscaling, and video generation — all via durable jobs (survive disconnects)
 - Text-to-speech read-aloud for messages
 - Free tier with rate limiting (5 messages/hour); premium subscriptions via Stripe
@@ -103,7 +106,7 @@ A `JOBS_ENABLED` flag gates the cutover; the legacy in-request SSE paths remain 
 │   ├── llm.py              # LLM client (streaming)
 │   ├── jobs/               # Durable job system
 │   │   ├── __init__.py     # Redis priority queue + per-job event log
-│   │   ├── routes.py       # POST /jobs/<kind>/<thread>, GET /jobs/<id>, GET /jobs/<id>/stream
+│   │   ├── routes.py       # POST /jobs/<kind>/<thread>, GET /jobs/<id>, GET /jobs/<id>/stream, GET /jobs/active
 │   │   ├── worker.py       # Claim/run loop, heartbeat, crash-recovery reaper
 │   │   └── handlers/       # chat.py + media.py (image/upscale/edit/video/animate)
 │   ├── chat/               # Chat blueprint (+ legacy in-request media/SSE fallback)
@@ -112,7 +115,7 @@ A `JOBS_ENABLED` flag gates the cutover; the legacy in-request SSE paths remain 
 │   ├── contact.py · pricing.py · health.py · csrf.py · queue.py
 │   ├── templates/          # Jinja2 templates (chat.html drives the job EventSource client)
 │   └── static/             # CSS, JS, PWA assets
-├── migrations/             # Flask-Migrate/Alembic (004 = generation_job + job_id links)
+├── migrations/             # Flask-Migrate/Alembic (004 = generation_job + job_id links; 005 = Message.reasoning_tokens; 006 = Thread.last_mode)
 ├── deploy/                 # systemd units: ecolyxis-worker.service, secret-key.conf drop-in
 ├── uploads/                # Generated/uploaded media
 └── venv/                   # Python virtual environment
