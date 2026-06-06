@@ -1,8 +1,14 @@
 flask>=3.0
 flask-sqlalchemy>=3.1
 flask-login>=0.6
+flask-migrate>=4.1
 werkzeug>=3.0
 requests>=2.31
 gunicorn>=21.2
 stripe>=10.0
 redis>=5.0
+psycopg2-binary>=2.9
+alembic>=1.13
+pillow>=10.0
+# Optional: enables WebAuthn/passkey auth. Endpoints 501 gracefully if absent.
+# webauthn>=2.0

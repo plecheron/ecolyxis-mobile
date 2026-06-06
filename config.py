@@ -24,12 +24,23 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Session/auth cookie hardening. SameSite=Lax blocks the cookie on cross-site
+    # POSTs (defence-in-depth for CSRF). Secure is env-gated (default off) because
+    # the edge currently serves HTTP — flip SESSION_COOKIE_SECURE=1 once the
+    # public endpoint is end-to-end HTTPS, or login cookies won't be sent.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0") not in ("0", "", "false", "False")
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
     # Redis — durable job queue + resumable event log (see app/redis_client.py)
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
     # Route the chat frontend through the durable worker/job path. Off by
     # default; the new endpoints exist regardless — this flips the UI over.
     JOBS_ENABLED = os.environ.get("JOBS_ENABLED", "0") not in ("0", "", "false", "False")
-    LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://10.0.0.1:8081/v1")
+    LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://10.0.0.6:8081/v1")
     LLM_MODEL = "Qwen_Qwen3.6-35B-A3B-Q4_0.gguf"
     LLM_MAX_HISTORY = 20
     LLM_SYSTEM_PROMPT = (

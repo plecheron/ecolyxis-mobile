@@ -15,7 +15,7 @@ Ecolyxis is a **sustainable AI chat platform** — a web-based LLM chatbot servi
 | Reverse Proxy | Caddy (HTTP `:80` → Gunicorn `:8000`) |
 | Database | PostgreSQL (via `DATABASE_URL`) |
 | Job queue + event log | Redis (localhost, password-protected) |
-| LLM | Qwen3.6-35B-A3B (Q4_0) via llama.cpp OpenAI-compatible API at `10.0.0.1:8081` |
+| LLM | Qwen3.6-35B-A3B (Q4_0) via llama.cpp OpenAI-compatible API at `10.0.0.6:8081` |
 | Image Gen | HiDream (`10.0.0.6:8083`) + Step1X-Edit image editing (`10.0.0.6:8087`) |
 | Video Gen | WAN 2.2 (`10.0.0.6:8085`) |
 | TTS | Qwen3-TTS (`10.0.0.6:8091`) |
@@ -37,7 +37,7 @@ Internet → VPS (77.68.76.216) → WireGuard → Caddy :80 → Gunicorn :8000 (
                                                               │ final artifact
                                                               ▼
                                           PostgreSQL  +  GPU backends:
-                                            LLM 10.0.0.1:8081 · media 10.0.0.6 (image/video/edit/tts)
+                                            LLM 10.0.0.6:8081 · media 10.0.0.6 (image/video/edit/tts)
 ```
 
 **Why this matters — connection-drop resilience.** A dropped connection, tab reload, or even a web/worker restart never costs the customer their work:
@@ -87,8 +87,7 @@ A `JOBS_ENABLED` flag gates the cutover; the legacy in-request SSE paths remain 
 | ecolyxis_web1 | 192.168.122.162 | Flask app (`ecolyxis`) + worker (`ecolyxis-worker`) + Redis (this server) |
 | ecolyxis_web2 | 192.168.122.221 | Secondary web server |
 | ecolyxis_db1 | 192.168.122.163 | PostgreSQL |
-| host01 (GPU) | 10.0.0.1 | LLM inference (Qwen) |
-| gpu-manager (GPU) | 10.0.0.6 | Image (HiDream/Step1X-Edit), video (WAN 2.2), TTS (Qwen3-TTS) |
+| gpu-manager (GPU) | 10.0.0.6 | LLM inference (Qwen, :8081) + Image (HiDream/Step1X-Edit), video (WAN 2.2), TTS (Qwen3-TTS) |
 | VPS | 77.68.76.216 | Public gateway / WireGuard entry |
 
 ## File Structure

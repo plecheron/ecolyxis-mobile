@@ -93,8 +93,10 @@ def create_app(test_config=None):
         # Health checks — exempt
         if request.path.startswith("/health"):
             return None
-        # Webhook endpoints — exempt (verified by Stripe signatures)
-        if request.path.startswith("/billing/"):
+        # Stripe webhook — exempt (authenticated by Stripe signature, not a CSRF
+        # token). Scoped to the exact path so other state-changing /billing/*
+        # routes (e.g. cancel-subscription) keep CSRF protection.
+        if request.path == "/billing/webhook":
             return None
 
         token = request.headers.get("X-CSRFToken") or request.form.get("csrf_token")

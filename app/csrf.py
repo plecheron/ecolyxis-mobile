@@ -1,15 +1,13 @@
 """Lightweight CSRF protection without external dependencies.
 
-Generates a per-session token, validates it on POST requests.
-Exempts API routes (Bearer token auth) and JSON requests with
-X-CSRFToken header.
+Generates a per-session token and validates it. Enforcement is global via the
+``before_request`` hook in :mod:`app` (see ``_check_csrf``); these helpers back
+that hook and the ``csrf_token()`` Jinja global.
 """
-import hashlib
 import hmac
 import secrets
-from functools import wraps
 
-from flask import request, session, jsonify, current_app
+from flask import session
 
 
 def generate_csrf_token():
@@ -25,39 +23,3 @@ def validate_csrf_token(token):
     if not expected or not token:
         return False
     return hmac.compare_digest(expected, token)
-
-
-def csrf_protect(f):
-    """Decorator: validate CSRF token on POST/PUT/DELETE/PATCH requests.
-
-    Checks for token in:
-    1. X-CSRFToken header (for AJAX/fetch requests)
-    2. form field named 'csrf_token' (for form submissions)
-
-    Skips validation for GET/HEAD/OPTIONS.
-    """
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return f(*args, **kwargs)
-
-        # API routes use Bearer token auth — exempt
-        if request.path.startswith("/v1/"):
-            return f(*args, **kwargs)
-
-        # Check header first (AJAX), then form field
-        token = request.headers.get("X-CSRFToken") or request.form.get("csrf_token")
-
-        if not validate_csrf_token(token):
-            current_app.logger.warning(
-                f"CSRF validation failed for {request.method} {request.path} "
-                f"from {request.remote_addr}"
-            )
-            # For JSON requests, return JSON error
-            if request.is_json or request.headers.get("Accept", "").startswith("application/json"):
-                return jsonify({"error": "CSRF token validation failed"}), 403
-            # For form requests, return simple error
-            return "CSRF token validation failed. Please go back and try again.", 403
-
-        return f(*args, **kwargs)
-    return decorated
