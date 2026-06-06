@@ -80,6 +80,8 @@
                 </div>
             </div>
             {% set _sel = thread.last_mode or 'standard' %}
+            {# media modes are one-shot and never restored as the thread default #}
+            {% if _sel not in ['quick', 'standard', 'long', 'precise', 'vision'] %}{% set _sel = 'standard' %}{% endif %}
             {% if _sel == 'vision' and not rate_info.is_premium %}{% set _sel = 'standard' %}{% endif %}
             <select class="model-select" id="model-select">
                 <optgroup label="💬 Chat Modes">
@@ -1227,13 +1229,12 @@ async function runMediaJob(kind, body) {
             return;
         }
         var data = await resp.json();
-        try { localStorage.setItem('ecolyxis_media_job', JSON.stringify({ threadId: threadId, jobId: data.job_id, kind: kind })); } catch (e) {}
+        // Resume is driven by GET /jobs/active (server truth), so no localStorage
+        // slot to clobber when several media jobs run across threads/tabs.
         await streamMediaJob(data.job_id, kind);
-        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
     } catch (err) {
         removeThinking();
         addErrorMessage("⚠️ " + err.message);
-        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
     }
 }
 
@@ -2647,19 +2648,25 @@ function reconnectToEdit(tid, jid) {
         if (isStreaming) return;
         for (var i = 0; i < jobs.length; i++) {
             var j = jobs[i];
-            if (j.thread_id !== threadId || j.kind !== 'chat' || resumedJobs[j.job_id]) continue;
+            if (j.thread_id !== threadId || resumedJobs[j.job_id]) continue;
             resumedJobs[j.job_id] = true;
             // Job already finished + persisted between render and now — its bubble
-            // is in history; don't replay a duplicate.
+            // is in history; don't replay a duplicate. (Chat + image/edit/upscale
+            // persist a Message keyed by job_id; video has none, so a running
+            // video simply resumes.)
             if (document.querySelector('.message[data-job-id="' + j.job_id + '"]')) continue;
             isStreaming = true;
             sendBtn.disabled = true;
             showThinking();
-            streamJob(j.job_id).then(function() {
-                isStreaming = false;
-                sendBtn.disabled = false;
-            });
-            break;  // one active chat job per thread
+            var done = function() { isStreaming = false; sendBtn.disabled = false; };
+            // Server truth drives resume for every kind, so image/video survive a
+            // navigate-away-and-back (and cross-tab/device) exactly like chat.
+            if (j.kind === 'chat') {
+                streamJob(j.job_id).then(done);
+            } else {
+                streamMediaJob(j.job_id, j.kind).then(done);
+            }
+            break;  // one active job resumed per poll
         }
     }
 
@@ -2689,36 +2696,10 @@ function reconnectToEdit(tid, jid) {
     poll();  // initial: resume current thread's live stream + paint sidebar
 })();
 
-// Auto-resume an in-flight media generation (image/edit/video) on page load.
-(function() {
-    if (!JOBS_ENABLED) return;
-    var saved;
-    try { saved = localStorage.getItem('ecolyxis_media_job'); } catch (e) { return; }
-    if (!saved) return;
-    var info;
-    try { info = JSON.parse(saved); } catch (e) {
-        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e2) {}
-        return;
-    }
-    if (!info || info.threadId !== threadId || !info.jobId) {
-        try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
-        return;
-    }
-    fetch("/jobs/" + info.jobId).then(function(r) { return r.ok ? r.json() : null; }).then(function(job) {
-        if (!job || (job.status !== 'queued' && job.status !== 'running')) {
-            try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
-            return;
-        }
-        isStreaming = true;
-        sendBtn.disabled = true;
-        showThinking();
-        streamMediaJob(info.jobId, info.kind).then(function() {
-            try { localStorage.removeItem('ecolyxis_media_job'); } catch (e) {}
-            isStreaming = false;
-            sendBtn.disabled = false;
-        });
-    }).catch(function() {});
-})();
+// In-flight media generations (image/edit/video) resume via the GET /jobs/active
+// poll above — the same server-truth path as chat — so they survive a
+// navigate-away-and-back across tabs/devices. (Replaces the old single-slot
+// `ecolyxis_media_job` localStorage approach, which only tracked one job.)
 
 // ─── TTS (Text-to-Speech) ──────────────────────────────────────────────
 let currentTTS = null;  // { audio: Audio, btn: Element }

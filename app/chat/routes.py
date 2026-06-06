@@ -29,6 +29,10 @@ from app.chat import (
 # Modes selectable in the chat header dropdown (chat + media). Used to validate
 # the per-thread remembered mode.
 VALID_MODES = {"quick", "standard", "long", "precise", "image", "edit", "video", "vision"}
+# Only conversational modes are remembered per-thread. A media mode (image/edit/
+# video) is a one-shot action — persisting it would "switch" the thread into
+# generating media on the next plain message, which surprises users.
+CHAT_MODES = {"quick", "standard", "long", "precise", "vision"}
 
 
 @chat_bp.route("/chat/<string:thread_id>")
@@ -627,8 +631,11 @@ def set_mode(thread_id):
     mode = (data.get("mode") or "").strip()
     if mode not in VALID_MODES:
         return {"error": "Invalid mode"}, 400
-    thread.last_mode = mode
-    db.session.commit()
+    # Media modes are intentionally not remembered (see CHAT_MODES) so the thread
+    # never silently stays in image/edit/video mode after a one-off generation.
+    if mode in CHAT_MODES:
+        thread.last_mode = mode
+        db.session.commit()
     return ("", 204)
 
 

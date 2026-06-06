@@ -65,6 +65,32 @@ def test_view_defaults_to_standard(app, db, make_user, login_as, client):
     assert '<option value="standard" selected>' in html
 
 
+@pytest.mark.parametrize("media_mode", ["image", "edit", "video"])
+def test_media_modes_not_persisted(app, db, make_user, login_as, client, media_mode):
+    """Selecting a media mode is a one-shot action — it must not stick the thread
+    into generating media on the next plain message."""
+    user = make_user()
+    thread = _thread(db, user, last_mode="long")
+    login_as(user)
+
+    resp = client.post(f"/chat/{thread.id}/mode", json={"mode": media_mode})
+    assert resp.status_code == 204  # accepted, but not remembered
+    with app.app_context():
+        assert db.session.get(Thread, thread.id).last_mode == "long"
+
+
+@pytest.mark.parametrize("media_mode", ["image", "edit", "video"])
+def test_view_falls_back_when_stale_media_mode(app, db, make_user, login_as, client, media_mode):
+    """A thread left on a media mode by older code still opens in chat mode."""
+    user = make_user()
+    thread = _thread(db, user, last_mode=media_mode)
+    login_as(user)
+
+    html = client.get(f"/chat/{thread.id}").get_data(as_text=True)
+    assert '<option value="standard" selected>' in html
+    assert f'<option value="{media_mode}" selected>' not in html
+
+
 def test_non_premium_vision_falls_back_to_standard(app, db, make_user, login_as, client):
     user = make_user()  # default user is not premium
     thread = _thread(db, user, last_mode="vision")
