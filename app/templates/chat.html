@@ -2702,10 +2702,21 @@ function reconnectToEdit(tid, jid) {
 // `ecolyxis_media_job` localStorage approach, which only tracked one job.)
 
 // ─── TTS (Text-to-Speech) ──────────────────────────────────────────────
-let currentTTS = null;  // { audio: Audio, btn: Element }
+let currentTTS = null;       // { audio: Audio, btn: Element }
+const _ttsCache = {};        // msgId -> { audio } — generated audio, kept for the session
+
+// Start (or resume) playback. Must be reachable from within a click handler so
+// the browser counts it as user-activated; otherwise play() is blocked.
+function _playTTS(audio, btn, msgId) {
+    return audio.play().then(() => {
+        btn.textContent = '⏸';
+        btn.title = 'Pause';
+        currentTTS = { audio: audio, btn: btn };
+    });
+}
 
 function speakMessage(msgId, btn) {
-    // If already playing this message, stop it
+    // Toggle: clicking the message that's currently playing stops it.
     if (currentTTS && currentTTS.btn === btn) {
         currentTTS.audio.pause();
         currentTTS.audio.currentTime = 0;
@@ -2714,7 +2725,7 @@ function speakMessage(msgId, btn) {
         currentTTS = null;
         return;
     }
-    // Stop any other playing TTS
+    // Stop any other playing TTS.
     if (currentTTS) {
         currentTTS.audio.pause();
         currentTTS.audio.currentTime = 0;
@@ -2723,8 +2734,20 @@ function speakMessage(msgId, btn) {
         currentTTS = null;
     }
 
+    // Already generated for this message? Play the cached audio NOW — this runs
+    // inside the click's user-activation window, so the browser allows it. (This
+    // is also the "tap to play" path after a blocked autoplay.)
+    const cached = _ttsCache[msgId];
+    if (cached) {
+        cached.audio.currentTime = 0;
+        _playTTS(cached.audio, btn, msgId).catch(() => {
+            btn.textContent = '🔊'; btn.title = 'Read aloud';
+        });
+        return;
+    }
+
     btn.textContent = '⏳';
-    btn.title = 'Loading...';
+    btn.title = 'Generating audio…';
 
     const threadId = window.location.pathname.split('/').pop();
 
@@ -2738,26 +2761,15 @@ function speakMessage(msgId, btn) {
         return resp.blob();
     })
     .then(blob => {
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        currentTTS = { audio: audio, btn: btn };
-
-        btn.textContent = '⏸';
-        btn.title = 'Pause';
-
-        audio.play().catch(err => {
-            btn.textContent = '🔊';
-            btn.title = 'Read aloud';
-            console.error('Audio play failed:', err);
-        });
+        const audio = new Audio(URL.createObjectURL(blob));
+        _ttsCache[msgId] = { audio: audio };
 
         audio.onended = () => {
             btn.textContent = '🔊';
             btn.title = 'Read aloud';
-            URL.revokeObjectURL(url);
-            currentTTS = null;
+            audio.currentTime = 0;
+            if (currentTTS && currentTTS.btn === btn) currentTTS = null;
         };
-
         audio.onpause = () => {
             if (currentTTS && currentTTS.btn === btn) {
                 btn.textContent = '🔊';
@@ -2765,11 +2777,21 @@ function speakMessage(msgId, btn) {
                 currentTTS = null;
             }
         };
+
+        return _playTTS(audio, btn, msgId).catch(err => {
+            // Autoplay was blocked because generation outlived the original
+            // click's activation window (common on cold-start / longer audio).
+            // The audio is generated + cached — surface a tap-to-play affordance
+            // instead of failing silently; the next click plays it instantly.
+            console.warn('TTS autoplay blocked, awaiting tap:', err && err.name);
+            btn.textContent = '▶️';
+            btn.title = 'Audio ready — tap to play';
+        });
     })
     .catch(err => {
         btn.textContent = '🔊';
         btn.title = 'Read aloud';
-        alert(err.message || 'TTS failed — the model may be loading, try again in a few minutes.');
+        alert(err.message || 'TTS failed — the voice model may be warming up, try again in a moment.');
     });
 }
 
