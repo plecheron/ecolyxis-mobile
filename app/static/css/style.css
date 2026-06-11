@@ -1996,8 +1996,8 @@ a:hover {
 /* ===== Workspace sidebar styles ===== */
 .sidebar-workspaces {
     padding: 0 12px;
-    max-height: 40vh;
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
 }
 
 .sidebar-section-header {

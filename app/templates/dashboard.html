@@ -25,6 +25,20 @@
             <p class="sidebar-empty">No conversations yet</p>
             {% endif %}
         </nav>
+        <div class="sidebar-workspaces" style="padding:8px 12px;border-top:1px solid var(--border,#30363d);">
+            <div style="font-size:0.75rem;color:var(--text-muted,#8b949e);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Workspaces</div>
+            {% for ws in workspaces %}
+            <a href="{{ url_for('dashboard.workspace_detail', workspace_id=ws.id) }}" class="thread-item" style="display:flex;justify-content:space-between;align-items:center;">
+                <span class="thread-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ws.name }}</span>
+                <span style="font-size:0.7rem;color:var(--text-muted,#8b949e);background:var(--bg-input,#21262d);padding:1px 6px;border-radius:8px;margin-left:4px;">{{ ws_thread_counts.get(ws.id, 0) }}</span>
+            </a>
+            {% endfor %}
+            {% if not workspaces %}
+            <p class="sidebar-empty" style="font-size:0.8rem;">No workspaces yet</p>
+            {% endif %}
+        </div>
+
+
         <div class="sidebar-footer">
                         <span class="user-name">👤 {{ current_user.display_name }}
                 {% if current_user.is_premium %}

@@ -150,10 +150,27 @@ def workspace_detail(workspace_id):
         last_snippets = {tid: (content[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
 
     # --- Context budget stats (#81) ---
+    # (#84) Generate fallback summaries from messages if thread.summary is empty
     CONTEXT_BUDGET = 2000
     context_chars = {}
     for t in threads:
-        context_chars[t.id] = len(t.summary or '')
+        summary = t.summary
+        if not summary:
+            # Auto-generate a rough summary from first user + assistant messages
+            msgs = (Message.query.filter_by(thread_id=t.id)
+                    .order_by(Message.created_at).all())
+            first_user = ''
+            first_assistant = ''
+            for m in msgs:
+                if m.role == 'user' and not first_user:
+                    first_user = (m.content or '')[:200]
+                elif m.role == 'assistant' and not first_assistant:
+                    first_assistant = (m.content or '')[:300]
+                if first_user and first_assistant:
+                    break
+            if first_user or first_assistant:
+                summary = (first_user + ' \u2192 ' + first_assistant)[:500]
+        context_chars[t.id] = len(summary or '')
     total_context = sum(context_chars.values())
     context_budget = CONTEXT_BUDGET
 
