@@ -124,7 +124,7 @@
             <div class="dashboard-section" style="margin-top:1.5rem">
                 <div class="dashboard-header" style="margin-bottom:0.75rem">
                     <h3 style="font-size:1.1rem;margin:0">📁 Workspaces</h3>
-                    <a href="{{ url_for("workspaces.index") }}" class="btn btn-outline btn-sm">Manage</a>
+                    <a href="{{ url_for("dashboard.index") }}" class="btn btn-outline btn-sm">Manage</a>
                 </div>
                 <div class="workspace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
                     {% for ws in workspaces %}

@@ -1,7 +1,10 @@
-from flask import Blueprint, jsonify
-from app import db
-from sqlalchemy import text
+import os
+
 import requests
+from flask import Blueprint, jsonify, current_app
+from sqlalchemy import text
+
+from app import db
 
 health_bp = Blueprint("health", __name__)
 
@@ -10,7 +13,6 @@ health_bp = Blueprint("health", __name__)
 def check():
     status = {"status": "ok", "checks": {}}
 
-    # Database connectivity
     try:
         db.session.execute(text("SELECT 1"))
         status["checks"]["database"] = "ok"
@@ -18,23 +20,37 @@ def check():
         status["checks"]["database"] = f"error: {e}"
         status["status"] = "degraded"
 
-    # LLM API connectivity
-    try:
-        from flask import current_app
-        resp = requests.get(
-            current_app.config["LLM_BASE_URL"].rstrip("/") + "/models",
-            timeout=5,
-        )
-        if resp.ok:
-            status["checks"]["llm_api"] = "ok"
-        else:
-            status["checks"]["llm_api"] = f"error: HTTP {resp.status_code}"
+    api_url = (
+        os.environ.get("ECOLYXIS_API_URL")
+        or current_app.config.get("ECOLYXIS_API_URL")
+        or ""
+    ).rstrip("/")
+    if api_url:
+        try:
+            resp = requests.get(f"{api_url}/health", timeout=5)
+            if resp.ok:
+                status["checks"]["gpu_api"] = "ok"
+            else:
+                status["checks"]["gpu_api"] = f"error: HTTP {resp.status_code}"
+                status["status"] = "degraded"
+        except Exception as e:
+            status["checks"]["gpu_api"] = f"error: {e}"
             status["status"] = "degraded"
-    except Exception as e:
-        status["checks"]["llm_api"] = f"error: {e}"
-        status["status"] = "degraded"
+    else:
+        try:
+            resp = requests.get(
+                current_app.config["LLM_BASE_URL"].rstrip("/") + "/models",
+                timeout=5,
+            )
+            if resp.ok:
+                status["checks"]["llm_api"] = "ok"
+            else:
+                status["checks"]["llm_api"] = f"error: HTTP {resp.status_code}"
+                status["status"] = "degraded"
+        except Exception as e:
+            status["checks"]["llm_api"] = f"error: {e}"
+            status["status"] = "degraded"
 
-    # Redis (durable job queue + resumable event log)
     try:
         from app.redis_client import get_redis
         get_redis().ping()

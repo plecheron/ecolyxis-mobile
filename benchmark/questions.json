@@ -1,0 +1,68 @@
+{
+  "name": "Ecolyxis Intelligence Benchmark",
+  "version": "1.0",
+  "description": "Multi-domain, objectively-gradable benchmark. Each item has a deterministic answer extracted from a strict 'ANSWER:' protocol, so scoring requires no LLM judge.",
+  "grading": {
+    "answer_marker": "ANSWER:",
+    "numeric_default_tolerance": 0.001
+  },
+  "questions": [
+    {"id": "math-01", "category": "math", "difficulty": 1, "type": "numeric", "answer": 391, "prompt": "What is 17 multiplied by 23?"},
+    {"id": "math-02", "category": "math", "difficulty": 1, "type": "numeric", "answer": 36, "prompt": "What is 15% of 240?"},
+    {"id": "math-03", "category": "math", "difficulty": 1, "type": "numeric", "answer": 7, "prompt": "Solve for x: 3x + 7 = 28."},
+    {"id": "math-04", "category": "math", "difficulty": 1, "type": "numeric", "answer": 1024, "prompt": "What is 2 raised to the power of 10?"},
+    {"id": "math-05", "category": "math", "difficulty": 2, "type": "numeric", "answer": 50, "prompt": "A shirt costs $40 after a 20% discount. What was its original price in dollars?"},
+    {"id": "math-06", "category": "math", "difficulty": 2, "type": "numeric", "answer": 40, "prompt": "A train travels 60 kilometres in 1.5 hours at constant speed. What is its speed in kilometres per hour?"},
+    {"id": "math-07", "category": "math", "difficulty": 2, "type": "numeric", "answer": 55, "prompt": "What is the sum of all integers from 1 to 10 inclusive?"},
+    {"id": "math-08", "category": "math", "difficulty": 3, "type": "numeric", "answer": 5050, "prompt": "What is the sum of all integers from 1 to 100 inclusive?"},
+
+    {"id": "logic-01", "category": "logic", "difficulty": 1, "type": "exact", "answer": "yes", "aliases": ["true"], "prompt": "All bloops are razzies. All razzies are lazzies. Are all bloops necessarily lazzies? Answer yes or no."},
+    {"id": "logic-02", "category": "logic", "difficulty": 1, "type": "exact", "answer": "bob", "prompt": "Tom is taller than Sam. Sam is taller than Bob. Who is the shortest of the three? Give the name."},
+    {"id": "logic-03", "category": "logic", "difficulty": 2, "type": "exact", "answer": "no", "aliases": ["false"], "prompt": "If it is raining then the ground is wet. The ground is not wet. Is it raining? Answer yes or no."},
+    {"id": "logic-04", "category": "logic", "difficulty": 2, "type": "mcq", "answer": "C", "prompt": "Some cats are black. All black things absorb heat. Which statement is logically guaranteed? A) All cats are black. B) All cats absorb heat. C) Some cats absorb heat. D) No cats absorb heat. Give the letter."},
+    {"id": "logic-05", "category": "logic", "difficulty": 2, "type": "exact", "answer": "wednesday", "prompt": "If today is Monday, what day of the week will it be two days from now?"},
+    {"id": "logic-06", "category": "logic", "difficulty": 3, "type": "exact", "answer": "no", "aliases": ["false", "cannot", "not necessarily"], "prompt": "Some doctors are runners. Some runners are vegetarians. Does it logically follow that some doctors are vegetarians? Answer yes or no."},
+
+    {"id": "seq-01", "category": "sequence", "difficulty": 1, "type": "numeric", "answer": 32, "prompt": "What number comes next in the sequence: 2, 4, 8, 16, ?"},
+    {"id": "seq-02", "category": "sequence", "difficulty": 2, "type": "numeric", "answer": 13, "prompt": "What number comes next in the sequence: 1, 1, 2, 3, 5, 8, ?"},
+    {"id": "seq-03", "category": "sequence", "difficulty": 2, "type": "numeric", "answer": 25, "prompt": "What number comes next in the sequence: 1, 4, 9, 16, ?"},
+    {"id": "seq-04", "category": "sequence", "difficulty": 2, "type": "numeric", "answer": 13, "prompt": "What number comes next in this sequence of prime numbers: 2, 3, 5, 7, 11, ?"},
+    {"id": "seq-05", "category": "sequence", "difficulty": 3, "type": "numeric", "answer": 16, "prompt": "What number comes next in the sequence: 1, 2, 4, 7, 11, ?"},
+    {"id": "seq-06", "category": "sequence", "difficulty": 3, "type": "exact", "answer": "j", "prompt": "What letter comes next in this sequence (first letters of the months): J, F, M, A, M, ? Give a single letter."},
+
+    {"id": "know-01", "category": "knowledge", "difficulty": 1, "type": "exact", "answer": "canberra", "prompt": "What is the capital city of Australia?"},
+    {"id": "know-02", "category": "knowledge", "difficulty": 1, "type": "exact", "answer": "au", "prompt": "What is the chemical symbol for gold?"},
+    {"id": "know-03", "category": "knowledge", "difficulty": 1, "type": "numeric", "answer": 7, "prompt": "How many continents are there on Earth?"},
+    {"id": "know-04", "category": "knowledge", "difficulty": 1, "type": "exact", "answer": "jupiter", "prompt": "What is the largest planet in our solar system?"},
+    {"id": "know-05", "category": "knowledge", "difficulty": 2, "type": "exact", "answer": "shakespeare", "aliases": ["william shakespeare"], "prompt": "Who wrote the play Romeo and Juliet? Give the surname."},
+    {"id": "know-06", "category": "knowledge", "difficulty": 2, "type": "numeric", "answer": 1945, "prompt": "In what year did World War II end?"},
+    {"id": "know-07", "category": "knowledge", "difficulty": 2, "type": "exact", "answer": "mitochondria", "aliases": ["mitochondrion"], "prompt": "Which organelle is commonly described as the powerhouse of the cell?"},
+    {"id": "know-08", "category": "knowledge", "difficulty": 3, "type": "exact", "answer": "tokyo", "prompt": "What is the capital city of Japan?"},
+
+    {"id": "code-01", "category": "coding", "difficulty": 1, "type": "numeric", "answer": 5, "prompt": "In Python, what integer does this print? print(len('hello'))"},
+    {"id": "code-02", "category": "coding", "difficulty": 2, "type": "numeric", "answer": 30, "prompt": "In Python, what integer does this print? print(sum([x for x in range(1, 6)]) * 2)"},
+    {"id": "code-03", "category": "coding", "difficulty": 2, "type": "exact", "answer": "olleh", "prompt": "In Python, what string does this print? print('hello'[::-1])"},
+    {"id": "code-04", "category": "coding", "difficulty": 2, "type": "numeric", "answer": 1, "prompt": "In Python, what integer does this print? print(17 % 4)"},
+    {"id": "code-05", "category": "coding", "difficulty": 3, "type": "numeric", "answer": 120, "prompt": "In Python, what integer does this print?\n\nn = 1\nfor i in range(1, 6):\n    n *= i\nprint(n)"},
+    {"id": "code-06", "category": "coding", "difficulty": 3, "type": "numeric", "answer": 8, "prompt": "Consider the Fibonacci sequence defined by f(1)=1, f(2)=1, f(n)=f(n-1)+f(n-2). What is f(6)?"},
+
+    {"id": "reason-01", "category": "reasoning", "difficulty": 2, "type": "numeric", "answer": 0.05, "tolerance": 0.001, "prompt": "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost in dollars?"},
+    {"id": "reason-02", "category": "reasoning", "difficulty": 2, "type": "numeric", "answer": 5, "prompt": "If 5 machines take 5 minutes to make 5 widgets, how many minutes would it take 100 machines to make 100 widgets?"},
+    {"id": "reason-03", "category": "reasoning", "difficulty": 3, "type": "numeric", "answer": 47, "prompt": "A patch of lily pads doubles in size every day. It takes 48 days to cover the entire lake. On what day was the lake half covered?"},
+    {"id": "reason-04", "category": "reasoning", "difficulty": 2, "type": "numeric", "answer": 6, "prompt": "Sarah is twice as old as her brother. In 6 years she will be 1.5 times his age. How old is her brother now?"},
+    {"id": "reason-05", "category": "reasoning", "difficulty": 2, "type": "numeric", "answer": 2, "prompt": "There are 3 apples and you take away 2. How many apples do you have?"},
+    {"id": "reason-06", "category": "reasoning", "difficulty": 3, "type": "numeric", "answer": 9, "prompt": "A farmer has 17 sheep. All but 9 run away. How many sheep does the farmer have left?"},
+
+    {"id": "read-01", "category": "reading", "difficulty": 2, "type": "mcq", "answer": "B", "prompt": "Passage: Maria left the house at 8am carrying an umbrella, even though the sky was clear. By noon the streets were soaked and she was glad she had brought it. Question: Why was Maria glad she brought the umbrella? A) It was sunny all day. B) It rained later. C) She lost it. D) It was heavy. Give the letter."},
+    {"id": "read-02", "category": "reading", "difficulty": 2, "type": "mcq", "answer": "C", "prompt": "Passage: The library closes at 6pm on weekdays but stays open until 9pm on Fridays. Tom arrived at 7pm on a Friday. Question: Was the library open? A) No, it was closed. B) Only the cafe was open. C) Yes, it was open. D) It closed at 6pm. Give the letter."},
+    {"id": "read-03", "category": "reading", "difficulty": 3, "type": "exact", "answer": "no", "aliases": ["false"], "prompt": "Passage: Every member of the chess club is also in the math club. Priya is in the math club. Question: Based only on this passage, can we conclude Priya is in the chess club? Answer yes or no."},
+    {"id": "read-04", "category": "reading", "difficulty": 2, "type": "exact", "answer": "blue", "prompt": "Passage: The car was red, the truck was blue, and the van was green. Mark drove the vehicle that was the same colour as the clear daytime sky. Question: What colour was the vehicle Mark drove? Give one word."},
+
+    {"id": "inst-01", "category": "instruction", "difficulty": 1, "type": "exact", "answer": "banana", "prompt": "Output exactly the word BANANA and nothing describing it."},
+    {"id": "inst-02", "category": "instruction", "difficulty": 1, "type": "numeric", "answer": 4, "prompt": "How many words are in the following sentence: 'The quick brown fox'?"},
+    {"id": "inst-03", "category": "instruction", "difficulty": 2, "type": "exact", "answer": "n", "prompt": "What is the third letter of the word 'benchmark'? Give a single letter."},
+    {"id": "inst-04", "category": "instruction", "difficulty": 2, "type": "exact", "answer": "tac", "prompt": "Reverse the letters of the word 'cat'."},
+    {"id": "inst-05", "category": "instruction", "difficulty": 2, "type": "numeric", "answer": 3, "prompt": "How many times does the letter 'r' appear in the word 'strawberry'?"},
+    {"id": "inst-06", "category": "instruction", "difficulty": 1, "type": "exact", "answer": "paris", "prompt": "Fill in the blank with one word: 'The capital of France is ____.'"}
+  ]
+}
