@@ -79,13 +79,53 @@
                 </div>
             </div>
 
+            <!-- Context Budget Bar (#81) -->
+            <div class="context-budget" style="background:var(--bg-card,#161b22);border:1px solid var(--border,#30363d);border-radius:12px;padding:16px 20px;margin-bottom:1.5rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:0.88rem;color:var(--text-muted,#8b949e);">📋 Context Budget</span>
+                    <span style="font-size:0.85rem;color:var(--text,#e6edf3);font-weight:500;" id="context-label">
+                        {% if total_context >= 1000 %}
+                        {{ '%0.1fk' % (total_context / 1000) }}
+                        {% else %}
+                        {{ total_context }}
+                        {% endif %}
+                         /
+                        {% if context_budget >= 1000 %}
+                        {{ '%0.1fk' % (context_budget / 1000) }}
+                        {% else %}
+                        {{ context_budget }}
+                        {% endif %}
+                         chars used
+                    </span>
+                </div>
+                {% set pct = (total_context / context_budget * 100) if context_budget > 0 else 0 %}
+                {% if pct <= 75 %}
+                    {% set bar_color = '#3fb950' %}
+                {% elif pct <= 90 %}
+                    {% set bar_color = '#d29922' %}
+                {% else %}
+                    {% set bar_color = '#f85149' %}
+                {% endif %}
+                <div style="width:100%;height:8px;background:var(--bg-input,#21262d);border-radius:4px;overflow:hidden;">
+                    <div style="width:{{ '%0.1f' % pct }}%;max-width:100%;height:100%;background:{{ bar_color }};border-radius:4px;transition:width 0.3s ease;"></div>
+                </div>
+            </div>
+
             <!-- Thread List -->
             {% if threads %}
             <div class="thread-grid" id="thread-grid">
                 {% for t in threads %}
                 <div class="thread-card" id="thread-{{ t.id }}">
                     <a href="{{ url_for('chat.view', thread_id=t.id) }}">
-                        <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">{{ t.title }}</h3>
+                        <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">
+                            {{ t.title }}
+                            {% set tc = context_chars.get(t.id, 0) %}
+                            {% if tc > 0 %}
+                            <span class="context-badge" title="{{ tc }} chars of context">{{ tc }} chars</span>
+                            {% else %}
+                            <span class="context-badge context-badge--empty" title="No summary set">Not summarised</span>
+                            {% endif %}
+                        </h3>
                         <div class="thread-card-meta">
                             <span>{{ msg_counts.get(t.id, 0) }} messages</span>
                             <span>{{ t.updated_at.strftime('%d %B %Y, %H:%M') }}</span>
@@ -146,6 +186,9 @@
 .export-menu.show{display:block}
 .export-menu a{display:block;padding:8px 14px;font-size:0.85rem;color:var(--text,#e6edf3);text-decoration:none}
 .export-menu a:hover{background:var(--bg-hover,#21262d)}
+/* Context badge styles (#81) */
+.context-badge{display:inline-block;font-size:0.7rem;font-weight:500;padding:2px 7px;border-radius:10px;margin-left:8px;vertical-align:middle;background:rgba(63,185,80,0.15);color:#3fb950;border:1px solid rgba(63,185,80,0.3)}
+.context-badge--empty{background:rgba(139,148,158,0.1);color:var(--text-muted,#8b949e);border:1px solid rgba(139,148,158,0.2)}
 </style>
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <script>

@@ -16,6 +16,7 @@ def index():
     threads_q = (
         Thread.query.filter_by(user_id=current_user.id)
         .filter(Thread.messages.any())  # Hide empty threads
+        .filter(Thread.workspace_id.is_(None))  # Only unassigned threads (#73)
         .order_by(Thread.updated_at.desc())
     )
 
@@ -148,12 +149,23 @@ def workspace_detail(workspace_id):
         )
         last_snippets = {tid: (content[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
 
+    # --- Context budget stats (#81) ---
+    CONTEXT_BUDGET = 2000
+    context_chars = {}
+    for t in threads:
+        context_chars[t.id] = len(t.summary or '')
+    total_context = sum(context_chars.values())
+    context_budget = CONTEXT_BUDGET
+
     return render_template(
         "workspace_detail.html",
         workspace=workspace,
         threads=threads,
         msg_counts=msg_counts,
         last_snippets=last_snippets,
+        context_chars=context_chars,
+        total_context=total_context,
+        context_budget=context_budget,
     )
 
 

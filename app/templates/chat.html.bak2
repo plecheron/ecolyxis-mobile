@@ -40,10 +40,6 @@
                     <button class="workspace-menu-btn" onclick="event.stopPropagation(); showWorkspaceMenu(event, '{{ ws.id }}')" title="Workspace options">⋮</button>
                 </div>
                 <div class="workspace-threads" id="ws-threads-{{ ws.id }}" style="display:none">
-                    <a href="#" class="thread-item ws-thread quick-chat-item" data-quick-chat="{{ ws.id }}" onclick="event.preventDefault(); openQuickChat('{{ ws.id }}')">
-                        <span class="thread-title" style="font-style:italic;color:var(--text-muted,#8b949e)">⚡ Quick Chat</span>
-                        <span class="thread-date" style="font-size:0.65rem;opacity:0.6">ephemeral</span>
-                    </a>
                     {% for t in workspace_threads[ws.id] %}
                     <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item ws-thread {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}" data-workspace-id="{{ ws.id }}">
                         <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
@@ -130,16 +126,6 @@
                     </div>
                 </div>
             </div>
-            <div class="chat-header-title" id="chat-header-title" onclick="startRenameHeaderTitle()" title="Click to rename">
-                <span class="header-title-text" id="header-title-text">{{ thread.title }}</span>
-                <span class="header-title-edit-icon">✏️</span>
-            </div>
-            {% if thread.workspace_id and thread.use_workspace_context != false %}
-            <span class="ws-ctx-badge" id="ws-ctx-badge" title="Workspace context usage">
-                <span class="ws-ctx-icon">🏠</span>
-                <span class="ws-ctx-text" id="ws-ctx-text">...</span>
-            </span>
-            {% endif %}
             {% set _sel = thread.last_mode or 'standard' %}
             {# media modes are one-shot and never restored as the thread default #}
             {% if _sel not in ['quick', 'standard', 'long', 'precise', 'vision'] %}{% set _sel = 'standard' %}{% endif %}
@@ -166,9 +152,6 @@
                 {% else %}
 
                 {% endif %}
-                <button class="delete-chat-btn" onclick="deleteCurrentChat()" title="Delete chat">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
             </div>
         </div>
         {% if not rate_info.is_premium %}
@@ -181,21 +164,14 @@
         {% macro msg_actions(role, msg_id, is_last) %}
                     <div class="msg-actions" role="group" aria-label="Message actions">
                     {%- if role == 'user' %}
-                        <button type="button" class="msg-action btn-copy" onclick="copyMessage(this)" title="Copy" aria-label="Copy message">📋</button>
-                        <button type="button" class="msg-action btn-edit" onclick="startEdit({{ msg_id }})" title="Edit" aria-label="Edit message">✏️</button>
-                    {%- else %}
-                        <button type="button" class="msg-action btn-copy" onclick="copyMessage(this)" title="Copy" aria-label="Copy message">📋</button>
-                        <button type="button" class="msg-action btn-regenerate" onclick="regenerateMessage({{ msg_id }})" title="Regenerate" aria-label="Regenerate response">🔄</button>
+                        <button type="button" class="msg-action btn-edit" onclick="startEdit({{ msg_id }})" title="Edit message" aria-label="Edit message">✏️</button>
                     {%- endif %}
-                        <div class="msg-actions-wrapper">
-                            <button type="button" class="msg-actions-more-btn" onclick="toggleMsgMore(this)" title="More actions" aria-label="More actions">⋯</button>
-                            <div class="msg-actions-secondary">
-                            {%- if role == 'assistant' %}
-                                <button type="button" class="msg-action btn-tts" onclick="speakMessage({{ msg_id }}, this)" title="Read aloud" aria-label="Read message aloud">🔊 Read aloud</button>
-                            {%- endif %}
-                                <button type="button" class="msg-action btn-delete" onclick="deleteMessage({{ msg_id }}, this)" title="Delete" aria-label="Delete message">🗑️ Delete</button>
-                            </div>
-                        </div>
+                        <button type="button" class="msg-action btn-copy" onclick="copyMessage(this)" title="Copy message" aria-label="Copy message">📋</button>
+                    {%- if role == 'assistant' %}
+                        <button type="button" class="msg-action btn-tts" onclick="speakMessage({{ msg_id }}, this)" title="Read aloud" aria-label="Read message aloud">🔊</button>
+                        <button type="button" class="msg-action btn-regenerate" onclick="regenerateMessage({{ msg_id }})" title="Regenerate this response (discards messages after it)" aria-label="Regenerate response">🔄</button>
+                    {%- endif %}
+                        <button type="button" class="msg-action btn-delete" onclick="deleteMessage({{ msg_id }}, this)" title="Delete message" aria-label="Delete message">🗑️</button>
                     </div>
         {% endmacro %}
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
@@ -247,28 +223,6 @@
     </main>
 </div>
 {% endblock %}
-
-<style>
-.quick-chat-item {
-    opacity: 0.7;
-    transition: opacity 0.15s;
-}
-.quick-chat-item:hover {
-    opacity: 1;
-}
-.quick-chat-item.active {
-    opacity: 1;
-    background: var(--bg-tertiary, #21262d);
-}
-#ephemeral-banner {
-    border: none !important;
-    box-shadow: none;
-}
-#ephemeral-banner .message-content {
-    margin: 0;
-}
-</style>
-
 {% block scripts %}
 <script>
 const threadId = '{{ thread.id }}';
@@ -282,12 +236,7 @@ const JOBS_ENABLED = {{ 'true' if jobs_enabled else 'false' }};
 let isStreaming = false;
 let isThinking = false;
 let currentJobES = null;   // active durable-job EventSource, for Stop
-let stopRequested = false;
-// ===== Ephemeral Quick Chat State =====
-let isEphemeralChat = false;
-let ephemeralWorkspaceId = null;
-let ephemeralHistory = [];  // [{role, content}, ...]
- // set by stopGenerating(); checked by legacy reader loops
+let stopRequested = false; // set by stopGenerating(); checked by legacy reader loops
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -297,7 +246,7 @@ marked.setOptions({ breaks: true, gfm: true });
 function stopGenerating() {
     stopRequested = true;
     isStreaming = false;          // set before closing so the fetch wrapper won't auto-reconnect
-    if (currentJobES) { try { currentJobES.close(); } catch (e) { console.error('Search error:', e); } currentJobES = null; }
+    if (currentJobES) { try { currentJobES.close(); } catch (e) {} currentJobES = null; }
     removeThinking();
     sendBtn.disabled = false;
     var sb = document.getElementById('stop-btn');
@@ -429,26 +378,6 @@ function updateContextWheel() {
     if (pct > 85) { fill.classList.add('danger'); label.classList.add('danger'); }
     else if (pct > 60) { fill.classList.add('warn'); label.classList.add('warn'); }
     label.textContent = pct + '%';
-}
-
-function fetchWorkspaceContext() {
-    var badge = document.getElementById("ws-ctx-badge");
-    if (!badge) return;
-    if (typeof threadId === 'undefined' || !threadId) return;
-    fetch("/api/workspace-context/" + threadId).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(data) {
-        if (!data.enabled) {
-            badge.style.display = "none";
-            return;
-        }
-        badge.style.display = "";
-        var textEl = document.getElementById("ws-ctx-text");
-        if (!textEl) return;
-        var chars = data.workspace_context_chars;
-        var budget = data.workspace_context_budget;
-        var charDisplay = chars >= 1000 ? (chars / 1000).toFixed(1) + "k" : chars;
-        var budgetDisplay = budget >= 1000 ? (budget / 1000).toFixed(0) + "k" : budget;
-        textEl.textContent = data.sibling_thread_count + " thread" + (data.sibling_thread_count !== 1 ? "s" : "") + " \u00B7 " + charDisplay + "/" + budgetDisplay + " chars";
-    }).catch(function(e) { console.warn("Workspace context fetch failed:", e); });
 }
 
 function onModeChange() {
@@ -629,11 +558,7 @@ function attachThinkingChip(textEl, n) {
     const chip = document.createElement('div');
     chip.className = 'thinking-chip';
     chip.textContent = '💭 Thought for ' + n + ' tokens';
-    var header = content.querySelector('.msg-header');
-        var ref = header ? header.nextSibling : content.firstChild;
-        while (ref && ref.nodeType !== 1) ref = ref.nextSibling;
-        if (ref) content.insertBefore(chip, ref);
-        else content.appendChild(chip);
+    content.insertBefore(chip, content.firstChild);
 }
 
 function handleKey(e) {
@@ -689,7 +614,7 @@ function decorateCodeBlocks(scope) {
         pre.dataset.decorated = '1';
         var code = pre.querySelector('code');
         if (code && window.hljs) {
-            try { hljs.highlightElement(code); } catch (e) { console.error('Search error:', e); }
+            try { hljs.highlightElement(code); } catch (e) {}
             var m = (code.className || '').match(/language-([\w-]+)/);
             if (m) {
                 var lbl = document.createElement('span');
@@ -837,7 +762,6 @@ document.addEventListener('keydown', function(e) {
 function toggleCtxMenu(e) {
     e.stopPropagation();
     var menu = document.getElementById('ctx-menu');
-    if (!menu) return;
     menu.classList.toggle('open');
 }
 function closeCtxMenu() {
@@ -971,7 +895,6 @@ async function progressiveCompact() {
                 textEl.closest('.message-content').appendChild(tokenSpan);
             }
             updateContextWheel();
-            fetchWorkspaceContext();
         }
     } catch (err) {
         sysDiv.remove();
@@ -1085,7 +1008,6 @@ async function compactConversation() {
                 if (assMsg) assMsg.dataset.tokens = completionTokens;
             }
             updateContextWheel();
-            fetchWorkspaceContext();
         }
     } catch (err) {
         sysDiv.remove();
@@ -1131,7 +1053,6 @@ function finalizeAssistant(textEl, fullResponse, promptTokens, completionTokens,
         }
     }
     updateContextWheel();
-    fetchWorkspaceContext();
 }
 
 // Subscribe to a job's resumable event stream. Resolves when the job reaches a
@@ -1225,7 +1146,7 @@ async function maybeGenerateTitle(hasResponse) {
             if (mobileTitle) mobileTitle.textContent = titleData.title;
             document.title = titleData.title + ' — Ecolyxis';
         }
-    } catch (e) { console.error('Search error:', e); }
+    } catch (e) {}
 }
 
 async function sendMessageViaJob(content, imagesToSend, mode) {
@@ -1248,9 +1169,9 @@ async function sendMessageViaJob(content, imagesToSend, mode) {
         }
         const data = await resp.json();
         // Remember the in-flight job so a tab reload can resume it.
-        try { localStorage.setItem('ecolyxis_chat_job', JSON.stringify({ threadId: threadId, jobId: data.job_id })); } catch (e) { console.error('Search error:', e); }
+        try { localStorage.setItem('ecolyxis_chat_job', JSON.stringify({ threadId: threadId, jobId: data.job_id })); } catch (e) {}
         const result = await streamJob(data.job_id);
-        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) { console.error('Search error:', e); }
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
         if (!result.fullResponse && !result.error) {
             removeThinking();
             addErrorMessage("⚠️ No response received.");
@@ -1259,7 +1180,7 @@ async function sendMessageViaJob(content, imagesToSend, mode) {
     } catch (err) {
         removeThinking();
         addErrorMessage("⚠️ Error: " + err.message);
-        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) { console.error('Search error:', e); }
+        try { localStorage.removeItem('ecolyxis_chat_job'); } catch (e) {}
     }
 }
 
@@ -1418,16 +1339,6 @@ async function sendMessage(e) {
         return;
     }
     if (!content && pendingImages.length === 0) return;
-
-    // Ephemeral Quick Chat: redirect to ephemeral handler
-    if (isEphemeralChat) {
-        chatInput.value = "";
-        autoResize();
-        isStreaming = true;
-        sendBtn.disabled = true;
-        sendEphemeralMessage(content);
-        return;
-    }
 
     const imagesToSend = [...pendingImages];
     pendingImages = [];
@@ -1933,7 +1844,6 @@ async function sendMessage(e) {
                 }
             }
             updateContextWheel();
-            fetchWorkspaceContext();
         }
     } catch (err) {
         removeThinking();
@@ -1949,7 +1859,7 @@ async function sendMessage(e) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
             });
-        } catch (e) { console.error('Search error:', e); }
+        } catch (e) {}
     }
 
     // Auto-generate thread title after first message in a new thread
@@ -1969,7 +1879,7 @@ async function sendMessage(e) {
                     document.title = titleData.title + ' — Ecolyxis';
                 }
             }
-        } catch (e) { console.error('Search error:', e); }
+        } catch (e) {}
     }
 
     isStreaming = false;
@@ -2138,7 +2048,7 @@ async function submitEdit(msgId) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
             });
-        } catch (e) { console.error('Search error:', e); }
+        } catch (e) {}
     }
 
     isStreaming = false;
@@ -2270,7 +2180,7 @@ async function regenerateMessage(msgId) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: fullResponse, tokens_used: totalTokens > 0 ? totalTokens : null })
             });
-        } catch (e) { console.error('Search error:', e); }
+        } catch (e) {}
     }
 
     isStreaming = false;
@@ -2307,7 +2217,7 @@ if (searchInput) {
                     searchResults.innerHTML = '<div class="search-empty">No results</div>';
                     searchResults.classList.add('active');
                 }
-            } catch (e) { console.error('Search error:', e); }
+            } catch (e) {}
         }, 300);
     });
 
@@ -2317,19 +2227,6 @@ if (searchInput) {
         }, 200);
     });
 }
-
-// Delete current chat
-function deleteCurrentChat() {
-    if (!confirm('Delete this chat? This cannot be undone.')) return;
-    fetch('/threads/' + threadId, {
-        method: 'DELETE',
-        headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content}
-    }).then(function(r) {
-        if (r.ok) window.location.href = '/dashboard/';
-        else alert('Failed to delete chat.');
-    }).catch(function() { alert('Failed to delete chat.'); });
-}
-
 
 function openSidebar() {
     document.getElementById("sidebar").classList.add("open");
@@ -2341,67 +2238,6 @@ function closeSidebar() {
 }
 
 // ===== Thread Rename (double-click) =====
-
-// Rename chat title from the conversation view header
-function startRenameHeaderTitle() {
-    const titleEl = document.getElementById('header-title-text');
-    if (!titleEl) return;
-    const current = titleEl.textContent;
-    const container = document.getElementById('chat-header-title');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'header-title-input';
-    input.value = current;
-    input.maxLength = 200;
-    titleEl.replaceWith(input);
-    // Hide edit icon while editing
-    const editIcon = container.querySelector('.header-title-edit-icon');
-    if (editIcon) editIcon.style.display = 'none';
-    input.focus();
-    input.select();
-
-    async function save() {
-        const newTitle = input.value.trim();
-        const span = document.createElement('span');
-        span.className = 'header-title-text';
-        span.id = 'header-title-text';
-        if (newTitle && newTitle !== current) {
-            try {
-                const resp = await fetch('/chat/' + threadId + '/rename', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: newTitle })
-                });
-                if (resp.ok) {
-                    span.textContent = newTitle;
-                    // Update sidebar thread title
-                    const sidebarTitle = document.querySelector('.thread-item.active .thread-title');
-                    if (sidebarTitle) sidebarTitle.textContent = newTitle;
-                    // Update mobile title
-                    const mobileTitle = document.querySelector('.mobile-title');
-                    if (mobileTitle) mobileTitle.textContent = newTitle;
-                    // Update page title
-                    document.title = newTitle + ' — Ecolyxis';
-                } else {
-                    span.textContent = current;
-                }
-            } catch (err) {
-                span.textContent = current;
-            }
-        } else {
-            span.textContent = current;
-        }
-        input.replaceWith(span);
-        if (editIcon) editIcon.style.display = '';
-    }
-
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', function(ev) {
-        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
-        if (ev.key === 'Escape') { input.value = current; input.blur(); }
-    });
-}
-
 function startRenameThread(e, tId, el) {
     e.preventDefault();
     e.stopPropagation();
@@ -2434,9 +2270,6 @@ function startRenameThread(e, tId, el) {
                     if (link && link.classList.contains('active')) {
                         const mobileTitle = document.querySelector('.mobile-title');
                         if (mobileTitle) mobileTitle.textContent = newTitle;
-                        // Update header title in conversation view
-                        const headerTitleText = document.getElementById('header-title-text');
-                        if (headerTitleText) headerTitleText.textContent = newTitle;
                         document.title = newTitle + ' — Ecolyxis';
                     }
                 } else {
@@ -2554,7 +2387,6 @@ document.querySelectorAll(".message-user .message-text").forEach(function(el) {
 updateRegenerateButton();
 highlightExistingMessages();
 updateContextWheel();
-try { fetchWorkspaceContext(); } catch(e) { console.warn("Initial workspace context fetch failed:", e); }
 scrollToBottom();
 
 
@@ -3090,212 +2922,6 @@ function toggleWorkspace(wsId) {
     if (icon) icon.classList.toggle('expanded', !isOpen);
     try { localStorage.setItem('ws-open-' + wsId, !isOpen); } catch(e) {}
 }
-
-
-// ===== Ephemeral Quick Chat Functions =====
-function openQuickChat(wsId) {
-    isEphemeralChat = true;
-    ephemeralWorkspaceId = wsId;
-    ephemeralHistory = [];
-
-    // Clear chat area
-    messagesDiv.innerHTML = '';
-
-    // Add ephemeral banner
-    var banner = document.createElement('div');
-    banner.className = 'message message-system';
-    banner.id = 'ephemeral-banner';
-    banner.innerHTML = '<div class="message-content" style="text-align:center;padding:8px 16px;background:var(--bg-secondary,#161b22);border:1px dashed var(--border,#30363d);border-radius:8px;margin:8px 0;">' +
-        '<span style="color:var(--text-muted,#8b949e);font-size:0.85rem;">⚡ Quick Chat — messages are not saved</span></div>';
-    messagesDiv.appendChild(banner);
-
-    // Update page title and header
-    document.title = 'Quick Chat — Ecolyxis';
-    var mobileTitle = document.querySelector('.mobile-title');
-    if (mobileTitle) mobileTitle.textContent = 'Quick Chat';
-
-    // Highlight the quick chat in sidebar, remove active from others
-    document.querySelectorAll('.thread-item.active').forEach(function(el) {
-        el.classList.remove('active');
-    });
-    var qcItem = document.querySelector('[data-quick-chat="' + wsId + '"]');
-    if (qcItem) qcItem.classList.add('active');
-
-    // Disable certain UI elements not applicable to ephemeral
-    var modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-        // Restrict to chat modes only (no image/video/edit)
-        modelSelect.querySelectorAll('option').forEach(function(opt) {
-            opt.disabled = (opt.value === 'image' || opt.value === 'edit' || opt.value === 'video');
-        });
-    }
-
-    // Update input placeholder
-    chatInput.placeholder = 'Quick Chat message (not saved)...';
-    chatInput.focus();
-
-    // Show/hide workspace context area - hide it for ephemeral
-    var ctxMenu = document.getElementById('ctx-menu');
-    if (ctxMenu) ctxMenu.style.display = 'none';
-}
-
-function exitQuickChat() {
-    if (!isEphemeralChat) return;
-    isEphemeralChat = false;
-    ephemeralWorkspaceId = null;
-    ephemeralHistory = [];
-
-    // Remove banner if present
-    var banner = document.getElementById('ephemeral-banner');
-    if (banner) banner.remove();
-
-    // Restore input placeholder
-    chatInput.placeholder = 'Type your message...';
-
-    // Re-enable all mode options
-    var modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-        modelSelect.querySelectorAll('option').forEach(function(opt) {
-            opt.disabled = false;
-        });
-    }
-
-    // Remove active from quick chat items
-    document.querySelectorAll('.quick-chat-item.active').forEach(function(el) {
-        el.classList.remove('active');
-    });
-}
-
-function sendEphemeralMessage(content) {
-    // Add user message to display
-    var userDiv = addMessage("user", content, false);
-
-    // Track in ephemeral history
-    ephemeralHistory.push({"role": "user", "content": content});
-
-    showThinking();
-
-    var fullResponse = "";
-    var textEl = null;
-    var promptTokens = 0;
-    var completionTokens = 0;
-    var startTime = performance.now();
-    var firstTokenTime = null;
-    var selectedMode = document.getElementById('model-select').value;
-
-    // Restrict mode for ephemeral
-    var forbidden = {'image': true, 'edit': true, 'video': true};
-    if (forbidden[selectedMode]) selectedMode = 'standard';
-
-    fetch("/workspaces/" + ephemeralWorkspaceId + "/ephemeral-chat", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": _csrfToken
-        },
-        body: JSON.stringify({
-            prompt: content,
-            history: ephemeralHistory.slice(0, -1),  // exclude current (just added)
-            mode: selectedMode
-        })
-    }).then(function(resp) {
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        var buffer = "";
-
-        function pump() {
-            return reader.read().then(function(result) {
-                if (result.done || stopRequested) {
-                    // Stream complete
-                    if (textEl) {
-                        textEl.classList.remove('streaming-cursor');
-                        textEl.innerHTML = renderMd(fullResponse);
-                        var totalTokens = promptTokens + completionTokens;
-                        if (totalTokens > 0) {
-                            var lastContent = textEl.closest('.message-content');
-                            var tokenSpan = document.createElement('span');
-                            tokenSpan.className = 'msg-tokens';
-                            var endTime = performance.now();
-                            var elapsed = ((endTime - startTime) / 1000).toFixed(1);
-                            var tps = completionTokens > 0 ? (completionTokens / ((endTime - startTime) / 1000)).toFixed(1) : '?';
-                            tokenSpan.textContent = '⚡ ' + completionTokens + ' tokens · ' + tps + ' tok/s · ' + elapsed + 's';
-                            lastContent.appendChild(tokenSpan);
-                        }
-                    }
-
-                    // Track assistant response in ephemeral history
-                    if (fullResponse) {
-                        ephemeralHistory.push({"role": "assistant", "content": fullResponse});
-                    } else {
-                        removeThinking();
-                        addErrorMessage("⚠️ No response received.");
-                    }
-
-                    isStreaming = false;
-                    sendBtn.disabled = false;
-                    return;
-                }
-
-                buffer += decoder.decode(result.value, {stream: true});
-                var lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (var li = 0; li < lines.length; li++) {
-                    var line = lines[li].trim();
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        var parsed = JSON.parse(line.substring(6));
-                    } catch(e) { continue; }
-
-                    if (parsed.error) {
-                        removeThinking();
-                        if (parsed.error === "rate_limited") {
-                            showRateLimitModal(parsed.message);
-                        } else {
-                            addErrorMessage("⚠️ " + (parsed.message || parsed.error));
-                        }
-                        isStreaming = false;
-                        sendBtn.disabled = false;
-                        return;
-                    }
-                    if (parsed.thinking_start) {
-                        var thinkEl = document.getElementById("thinking-msg");
-                        if (thinkEl) {
-                            thinkEl.querySelector(".thinking-indicator").innerHTML =
-                                '<div class="thinking-dots"><span></span><span></span><span></span></div>Thinking...';
-                        }
-                    }
-                    if (parsed.thinking_end) { isThinking = false; }
-                    if (parsed.content) {
-                        if (!textEl) {
-                            removeThinking();
-                            var div = addMessage("assistant", "", false);
-                            textEl = div.querySelector(".message-text");
-                            if (!firstTokenTime) firstTokenTime = performance.now();
-                        }
-                        fullResponse += parsed.content;
-                        textEl.innerHTML = renderStreamingMd(fullResponse);
-                        textEl.classList.add('streaming-cursor');
-                        maybeScroll();
-                    }
-                    if (parsed.done) {
-                        promptTokens = parsed.prompt_tokens || 0;
-                        completionTokens = parsed.completion_tokens || 0;
-                    }
-                }
-
-                return pump();
-            });
-        }
-        return pump();
-    }).catch(function(err) {
-        removeThinking();
-        addErrorMessage("⚠️ Error: " + err.message);
-        isStreaming = false;
-        sendBtn.disabled = false;
-    });
-}
-
 
 // Restore workspace open states on load
 (function() {
