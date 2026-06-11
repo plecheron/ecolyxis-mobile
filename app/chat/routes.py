@@ -13,6 +13,7 @@ from flask_login import login_required, current_user
 from app import db
 from app.models import Thread, Message, Workspace
 from app.llm import get_workspace_context
+from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 from app.chat import (
     chat_bp,
     get_client,
@@ -777,7 +778,7 @@ def workspace_context_stats(thread_id):
     if not workspace:
         return {"enabled": False}
 
-    max_chars = 2000
+    max_tokens = WORKSPACE_CONTEXT_BUDGET
     siblings = (
         Thread.query
         .filter(
@@ -788,7 +789,7 @@ def workspace_context_stats(thread_id):
         .all()
     )
 
-    total_len = 0
+    total_tokens = 0
     contributing = 0
 
     for sib in siblings:
@@ -813,19 +814,19 @@ def workspace_context_stats(thread_id):
             continue
 
         section = "### " + (sib.title or "Untitled") + "\n" + summary_text
-        section_len = len(section) + 1
+        section_tokens = count_tokens(section) + 1
 
-        if total_len + section_len > max_chars:
+        if total_tokens + section_tokens > max_tokens:
             break
 
-        total_len += section_len
+        total_tokens += section_tokens
         contributing += 1
 
     return {
         "enabled": True,
         "workspace_name": workspace.name,
-        "workspace_context_chars": total_len,
-        "workspace_context_budget": max_chars,
+        "workspace_context_tokens": total_tokens,
+        "workspace_context_budget": max_tokens,
         "sibling_thread_count": contributing,
         "total_siblings": len(siblings),
     }

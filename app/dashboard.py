@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 from app import db
 from app.models import Thread, Message, Workspace
+from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 from datetime import datetime, timezone, timedelta
 
 dash_bp = Blueprint("dashboard", __name__)
@@ -151,8 +152,7 @@ def workspace_detail(workspace_id):
 
     # --- Context budget stats (#81) ---
     # (#84) Generate fallback summaries from messages if thread.summary is empty
-    CONTEXT_BUDGET = 2000
-    context_chars = {}
+    context_tokens = {}
     for t in threads:
         summary = t.summary
         if not summary:
@@ -170,9 +170,9 @@ def workspace_detail(workspace_id):
                     break
             if first_user or first_assistant:
                 summary = (first_user + ' \u2192 ' + first_assistant)[:500]
-        context_chars[t.id] = len(summary or '')
-    total_context = sum(context_chars.values())
-    context_budget = CONTEXT_BUDGET
+        context_tokens[t.id] = count_tokens(summary or '')
+    total_context = sum(context_tokens.values())
+    context_budget = WORKSPACE_CONTEXT_BUDGET
 
     return render_template(
         "workspace_detail.html",
@@ -180,7 +180,7 @@ def workspace_detail(workspace_id):
         threads=threads,
         msg_counts=msg_counts,
         last_snippets=last_snippets,
-        context_chars=context_chars,
+        context_tokens=context_tokens,
         total_context=total_context,
         context_budget=context_budget,
     )

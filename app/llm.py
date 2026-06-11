@@ -2,6 +2,8 @@ import requests
 import logging
 import json
 import time
+
+from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 logger = logging.getLogger('ecolyxis.llm')
 
 # Throttle for live thinking-token progress: emit at most every N reasoning
@@ -11,7 +13,7 @@ _THINK_EMIT_EVERY_TOKENS=8
 _THINK_EMIT_EVERY_SECONDS = 0.2
 
 
-def get_workspace_context(thread, max_chars=2000):
+def get_workspace_context(thread, max_tokens=WORKSPACE_CONTEXT_BUDGET):
     """Build a string of workspace description + sibling thread summaries.
 
     Returns None if the thread has no workspace or workspace context is disabled.
@@ -44,7 +46,7 @@ def get_workspace_context(thread, max_chars=2000):
     )
 
     sections = []
-    total_len = 0
+    total_tokens = 0
 
     for sib in siblings:
         summary_text = ""
@@ -69,13 +71,13 @@ def get_workspace_context(thread, max_chars=2000):
             continue
 
         section = f"### {sib.title or 'Untitled'}\n{summary_text}"
-        section_len = len(section) + 1  # +1 for newline
+        section_tokens = count_tokens(section) + 1  # +1 for newline
 
-        if total_len + section_len > max_chars:
+        if total_tokens + section_tokens > max_tokens:
             break
 
         sections.append(section)
-        total_len += section_len
+        total_tokens += section_tokens
 
     # Build the full context string
     parts = [header]

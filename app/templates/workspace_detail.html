@@ -95,7 +95,7 @@
                         {% else %}
                         {{ context_budget }}
                         {% endif %}
-                         chars used
+                         tokens used
                     </span>
                 </div>
                 {% set pct = (total_context / context_budget * 100) if context_budget > 0 else 0 %}
@@ -119,9 +119,9 @@
                     <a href="{{ url_for('chat.view', thread_id=t.id) }}">
                         <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">
                             {{ t.title }}
-                            {% set tc = context_chars.get(t.id, 0) %}
+                            {% set tc = context_tokens.get(t.id, 0) %}
                             {% if tc > 0 %}
-                            <span class="context-badge" title="{{ tc }} chars of context">{{ tc }} chars</span>
+                            <span class="context-badge" title="{{ tc }} tokens of context">{{ tc }} tokens</span>
                             {% else %}
                             <span class="context-badge context-badge--empty" title="No summary set">Not summarised</span>
                             {% endif %}

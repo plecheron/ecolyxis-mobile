@@ -443,11 +443,11 @@ function fetchWorkspaceContext() {
         badge.style.display = "";
         var textEl = document.getElementById("ws-ctx-text");
         if (!textEl) return;
-        var chars = data.workspace_context_chars;
+        var tokens = data.workspace_context_tokens;
         var budget = data.workspace_context_budget;
-        var charDisplay = chars >= 1000 ? (chars / 1000).toFixed(1) + "k" : chars;
+        var tokenDisplay = tokens >= 1000 ? (tokens / 1000).toFixed(1) + "k" : tokens;
         var budgetDisplay = budget >= 1000 ? (budget / 1000).toFixed(0) + "k" : budget;
-        textEl.textContent = data.sibling_thread_count + " thread" + (data.sibling_thread_count !== 1 ? "s" : "") + " \u00B7 " + charDisplay + "/" + budgetDisplay + " chars";
+        textEl.textContent = data.sibling_thread_count + " thread" + (data.sibling_thread_count !== 1 ? "s" : "") + " \u00B7 " + tokenDisplay + "/" + budgetDisplay + " tokens";
     }).catch(function(e) { console.warn("Workspace context fetch failed:", e); });
 }
 
