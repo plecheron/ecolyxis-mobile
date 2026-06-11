@@ -1,13 +1,4 @@
-"""Chat generation handler.
-
-Reuses the existing LLM client (``app.chat.get_client`` / ``LLMClient``) and
-the precise-mode pipeline, but instead of streaming straight to the client it
-publishes events into the job's Redis Stream and persists the assistant
-message keyed by ``job_id`` (UNIQUE) so a retry after a worker crash never
-creates a duplicate.
-
-Must be called inside an app context (the worker provides one).
-"""
+"""Chat generation handler — dispatches GPU work via ecolyxis-api."""
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -31,7 +22,6 @@ def _persist_assistant(job, text, tokens, reasoning_tokens=0):
     try:
         db.session.commit()
     except IntegrityError:
-        # Concurrent/retry insert lost the race on the UNIQUE job_id — reuse it.
         db.session.rollback()
         existing = Message.query.filter_by(job_id=job.id).first()
         return existing.id if existing else None
@@ -39,8 +29,10 @@ def _persist_assistant(job, text, tokens, reasoning_tokens=0):
 
 
 def run_chat(app, job, publish):
-    """Run a chat job. ``publish(event)`` appends to the job's event log."""
+    """Run a chat job via ecolyxis-api (precise mode still uses local pipeline)."""
     from app.chat import get_client, _run_precise
+    from app.jobs.api_client import stream_remote_job
+    from app.llm import get_workspace_context
 
     thread = db.session.get(Thread, job.thread_id)
     if thread is None:
@@ -52,46 +44,47 @@ def run_chat(app, job, publish):
     show_thinking = params.get("show_thinking", True)
 
     client = get_client()
-    msgs = client.build_messages(thread, mode=mode)
+    workspace_context = get_workspace_context(thread)
+    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
     publish({"type": "stream_start"})
-
-    text = ""
-    prompt_tokens = 0
-    completion_tokens = 0
-    reasoning_tokens = 0
 
     if precise:
         text, prompt_tokens, completion_tokens = _run_precise(client, msgs, "standard")
         if text:
             publish({"type": "content", "text": text})
-    else:
-        for chunk in client.stream_chat(msgs, mode=mode):
-            if isinstance(chunk, dict):
-                if "thinking_start" in chunk:
-                    if show_thinking:
-                        publish({"type": "thinking_start"})
-                elif "thinking_progress" in chunk:
-                    reasoning_tokens = chunk["thinking_progress"]
-                    if show_thinking:
-                        publish({"type": "thinking_progress", "tokens": reasoning_tokens})
-                elif "thinking_end" in chunk:
-                    reasoning_tokens = chunk.get("tokens", reasoning_tokens)
-                    if show_thinking:
-                        publish({"type": "thinking_end", "tokens": reasoning_tokens})
-                else:
-                    prompt_tokens = chunk.get("prompt_tokens", prompt_tokens)
-                    completion_tokens = chunk.get("completion_tokens", completion_tokens)
-            else:
-                text += chunk
-                publish({"type": "content", "text": chunk})
+        message_id = _persist_assistant(job, text, completion_tokens)
+        return {
+            "message_id": message_id,
+            "tokens": completion_tokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "reasoning_tokens": 0,
+            "via": "local-precise",
+        }
 
-    message_id = _persist_assistant(job, text, completion_tokens, reasoning_tokens)
+    result = stream_remote_job(
+        "chat",
+        {"messages": msgs, "mode": mode, "stream": True},
+        publish,
+        client_ref=str(job.id),
+    )
 
+    text = result.get("text", "")
+    usage = result.get("usage") or {}
+    prompt_tokens = int(result.get("prompt_tokens") or usage.get("prompt_tokens") or 0)
+    completion_tokens = int(
+        result.get("completion_tokens") or usage.get("completion_tokens") or 0
+    )
+
+    reasoning_tokens = int(result.get("reasoning_tokens") or 0)
+    message_id = _persist_assistant(job, text, completion_tokens, reasoning_tokens=reasoning_tokens)
     return {
         "message_id": message_id,
         "tokens": completion_tokens,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "reasoning_tokens": reasoning_tokens,
+        "via": "ecolyxis-api",
+        "gpu": result.get("gpu"),
     }

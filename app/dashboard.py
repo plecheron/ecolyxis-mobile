@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from app import db
-from app.models import Thread, Message
+from app.models import Thread, Message, Workspace
 from datetime import datetime, timezone, timedelta
 
 dash_bp = Blueprint("dashboard", __name__)
@@ -83,14 +83,39 @@ def index():
         "total_threads": len(threads),
     }
 
+    # --- Workspaces ---
+    workspaces = (
+        Workspace.query.filter_by(user_id=current_user.id)
+        .order_by(Workspace.updated_at.desc())
+        .all()
+    )
+    # Pre-compute thread count per workspace (single query)
+    ws_thread_counts = {}
+    if workspaces:
+        ws_ids = [ws.id for ws in workspaces]
+        ws_counts = (
+            db.session.query(Thread.workspace_id, func.count(Thread.id))
+            .filter(Thread.workspace_id.in_(ws_ids), Thread.user_id == current_user.id)
+            .group_by(Thread.workspace_id)
+            .all()
+        )
+        ws_thread_counts = dict(ws_counts)
+
     return render_template("dashboard.html", threads=threads, query=q, stats=stats,
-                           msg_counts=msg_counts, last_snippets=last_snippets)
+                           msg_counts=msg_counts, last_snippets=last_snippets,
+                           workspaces=workspaces, ws_thread_counts=ws_thread_counts)
 
 
 @dash_bp.route("/threads", methods=["POST"])
 @login_required
 def create_thread():
     thread = Thread(user_id=current_user.id, title="New Chat")
+    # Optional workspace_id: accept from form data or query string
+    ws_id = request.form.get("workspace_id") or request.args.get("workspace_id")
+    if ws_id:
+        ws = Workspace.query.filter_by(id=ws_id, user_id=current_user.id).first()
+        if ws:
+            thread.workspace_id = ws.id
     db.session.add(thread)
     db.session.commit()
     resp = make_response(redirect(url_for("chat.view", thread_id=thread.id)))

@@ -45,6 +45,22 @@ class User(UserMixin, db.Model):
         )
 
 
+
+class Workspace(db.Model):
+    __tablename__ = 'workspace'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
+
+    user = db.relationship('User', backref=db.backref('workspaces', lazy='dynamic', cascade='all, delete-orphan'))
+    threads = db.relationship('Thread', backref='workspace', lazy='dynamic')
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'name', name='uq_workspace_user_name'),)
+
 class Thread(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
@@ -53,6 +69,9 @@ class Thread(db.Model):
     # Last mode selected in this thread (quick/standard/long/precise/image/edit/
     # video/vision) — restored on load so the thread "remembers" its mode.
     last_mode = db.Column(db.String(20), nullable=True)
+    workspace_id = db.Column(db.String(36), db.ForeignKey('workspace.id', ondelete='SET NULL'), nullable=True, index=True)
+    summary = db.Column(db.Text, nullable=True)
+    use_workspace_context = db.Column(db.Boolean, default=True, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

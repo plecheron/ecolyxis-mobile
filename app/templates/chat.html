@@ -26,8 +26,41 @@
                 <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
             </form>
         </div>
+        <div class="sidebar-workspaces" id="sidebar-workspaces">
+            <div class="sidebar-section-header">
+                <span class="sidebar-section-title">Workspaces</span>
+                <button class="btn-icon" onclick="showCreateWorkspace()" title="New Workspace">+</button>
+            </div>
+            {% for ws in workspaces %}
+            <div class="workspace-group" data-workspace-id="{{ ws.id }}">
+                <div class="workspace-header" onclick="toggleWorkspace('{{ ws.id }}')">
+                    <span class="workspace-collapse-icon" id="ws-icon-{{ ws.id }}">▶</span>
+                    <span class="workspace-name">{{ ws.name }}</span>
+                    <span class="workspace-thread-count">({{ workspace_threads[ws.id]|length }})</span>
+                    <button class="workspace-menu-btn" onclick="event.stopPropagation(); showWorkspaceMenu(event, '{{ ws.id }}')" title="Workspace options">⋮</button>
+                </div>
+                <div class="workspace-threads" id="ws-threads-{{ ws.id }}" style="display:none">
+                    {% for t in workspace_threads[ws.id] %}
+                    <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item ws-thread {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}" data-workspace-id="{{ ws.id }}">
+                        <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
+                        <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
+                    </a>
+                    {% endfor %}
+                    <form method="POST" action="{{ url_for('dashboard.create_thread') }}" class="ws-new-chat-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="workspace_id" value="{{ ws.id }}">
+                        <button type="submit" class="btn btn-ghost btn-sm btn-full ws-new-chat-btn">+ New Chat</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="sidebar-section-header" style="margin-top: 4px; padding: 0 16px;">
+            <span class="sidebar-section-title">Other Chats</span>
+        </div>
         <nav class="sidebar-threads">
-            {% for t in threads %}
+            {% for t in threads if not t.workspace_id %}
             <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}">
                 <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
                 <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
@@ -72,6 +105,14 @@
                         <span class="ctx-icon">📝</span>
                         <div><span class="ctx-label">Export Markdown</span><span class="ctx-desc">Human-readable format</span></div>
                     </div>
+                    {% if thread.workspace_id %}
+                    <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); toggleWorkspaceContext()">
+                        <span class="ctx-icon">🏠</span>
+                        <div><span class="ctx-label">{{ 'Disable' if thread.use_workspace_context != false else 'Enable' }} Workspace Context</span>
+                        <span class="ctx-desc">{{ 'Stop' if thread.use_workspace_context != false else 'Start' }} seeing related chats in this workspace</span></div>
+                    </div>
+                    {% endif %}
+
                     <div class="ctx-menu-sep"></div>
                     <div class="ctx-menu-item" onclick="event.stopPropagation(); closeCtxMenu(); clearConversation()">
                         <span class="ctx-icon">🗑️</span>
@@ -696,6 +737,16 @@ function closeCtxMenu() {
     if (menu) menu.classList.remove('open');
 }
 document.addEventListener('click', closeCtxMenu);
+
+function toggleWorkspaceContext() {
+    fetch('/workspaces/threads/' + threadId + '/toggle-context', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    }).then(function(r) { return r.json(); }).then(function() {
+        location.reload();
+    });
+}
+
 
 // ===== Clear Conversation =====
 async function clearConversation() {
@@ -2794,6 +2845,187 @@ function speakMessage(msgId, btn) {
         alert(err.message || 'TTS failed — the voice model may be warming up, try again in a moment.');
     });
 }
+
+
+// === Workspace Management ===
+
+function toggleWorkspace(wsId) {
+    var threads = document.getElementById('ws-threads-' + wsId);
+    var icon = document.getElementById('ws-icon-' + wsId);
+    if (!threads) return;
+    var isOpen = threads.style.display !== 'none';
+    threads.style.display = isOpen ? 'none' : 'block';
+    if (icon) icon.classList.toggle('expanded', !isOpen);
+    try { localStorage.setItem('ws-open-' + wsId, !isOpen); } catch(e) {}
+}
+
+// Restore workspace open states on load
+(function() {
+    document.querySelectorAll('.workspace-group').forEach(function(g) {
+        var wsId = g.getAttribute('data-workspace-id');
+        try {
+            if (localStorage.getItem('ws-open-' + wsId) === 'true') {
+                var threads = document.getElementById('ws-threads-' + wsId);
+                var icon = document.getElementById('ws-icon-' + wsId);
+                if (threads) threads.style.display = 'block';
+                if (icon) icon.classList.add('expanded');
+            }
+        } catch(e) {}
+    });
+})();
+
+function showCreateWorkspace() {
+    var overlay = document.createElement('div');
+    overlay.className = 'ws-modal-overlay';
+    overlay.id = 'ws-create-modal';
+    overlay.innerHTML = '<div class="ws-modal">' +
+        '<h3>New Workspace</h3>' +
+        '<input type="text" id="ws-create-name" placeholder="Workspace name" maxlength="200" autofocus>' +
+        '<textarea id="ws-create-desc" placeholder="Description (optional)"></textarea>' +
+        '<div class="ws-modal-actions">' +
+        '<button class="btn btn-outline" onclick="closeWorkspaceModal()">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="submitCreateWorkspace()">Create</button>' +
+        '</div></div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeWorkspaceModal(); });
+    document.body.appendChild(overlay);
+    document.getElementById('ws-create-name').focus();
+}
+
+function closeWorkspaceModal() {
+    var m = document.getElementById('ws-create-modal');
+    if (m) m.remove();
+}
+
+function submitCreateWorkspace() {
+    var name = document.getElementById('ws-create-name').value.trim();
+    if (!name) return;
+    var desc = document.getElementById('ws-create-desc').value.trim();
+    _csrfFetch('/workspaces', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, description: desc || null})
+    }).then(function(r) {
+        if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Failed'); });
+        return r.json();
+    }).then(function() {
+        closeWorkspaceModal();
+        location.reload();
+    }).catch(function(err) {
+        alert('Error: ' + err.message);
+    });
+}
+
+function showWorkspaceMenu(event, wsId) {
+    event.stopPropagation();
+    var existing = document.querySelector('.ws-context-menu');
+    if (existing) existing.remove();
+
+    var menu = document.createElement('div');
+    menu.className = 'ws-context-menu';
+    menu.innerHTML =
+        '<button class="ws-context-menu-item" onclick="renameWorkspace(\'' + wsId + '\')">\u270f\ufe0f Rename</button>' +
+        '<button class="ws-context-menu-item" onclick="editWorkspaceDesc(\'' + wsId + '\')">\ud83d\udcdd Edit Description</button>' +
+        '<button class="ws-context-menu-item danger" onclick="deleteWorkspace(\'' + wsId + '\')">\ud83d\uddd1\ufe0f Delete Workspace</button>';
+    menu.style.left = event.clientX + 'px';
+    menu.style.top = event.clientY + 'px';
+    document.body.appendChild(menu);
+
+    setTimeout(function() {
+        document.addEventListener('click', function handler() {
+            menu.remove();
+            document.removeEventListener('click', handler);
+        });
+    }, 10);
+}
+
+function renameWorkspace(wsId) {
+    var name = prompt('New workspace name:');
+    if (!name || !name.trim()) return;
+    _csrfFetch('/workspaces/' + wsId, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name.trim()})
+    }).then(function(r) {
+        if (r.ok) location.reload();
+        else return r.json().then(function(d) { alert(d.error || 'Failed'); });
+    });
+}
+
+function editWorkspaceDesc(wsId) {
+    var desc = prompt('Workspace description:');
+    _csrfFetch('/workspaces/' + wsId, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({description: desc || ''})
+    }).then(function(r) {
+        if (r.ok) location.reload();
+    });
+}
+
+function deleteWorkspace(wsId) {
+    if (!confirm('Delete this workspace? Threads will be kept but unassigned.')) return;
+    _csrfFetch('/workspaces/' + wsId, {
+        method: 'DELETE'
+    }).then(function(r) {
+        if (r.ok) location.reload();
+    });
+}
+
+function showMoveThreadMenu(event, threadId) {
+    event.preventDefault();
+    event.stopPropagation();
+    var existing = document.querySelector('.ws-context-menu');
+    if (existing) existing.remove();
+
+    _csrfFetch('/workspaces').then(function(r) { return r.json(); }).then(function(workspaces) {
+        var menu = document.createElement('div');
+        menu.className = 'ws-context-menu';
+        var html = '';
+        if (workspaces.length === 0) {
+            html += '<div class="ws-context-menu-item" style="color:var(--text-muted);cursor:default">No workspaces yet</div>';
+        } else {
+            workspaces.forEach(function(ws) {
+                html += '<button class="ws-context-menu-item" onclick="moveThread(\'' + threadId + '\', \'' + ws.id + '\')">\ud83d\udcc1 ' + ws.name + '</button>';
+            });
+        }
+        html += '<button class="ws-context-menu-item" onclick="showCreateAndMove(\'' + threadId + '\')">+ New Workspace...</button>';
+        menu.innerHTML = html;
+        menu.style.left = event.clientX + 'px';
+        menu.style.top = event.clientY + 'px';
+        document.body.appendChild(menu);
+
+        setTimeout(function() {
+            document.addEventListener('click', function handler() {
+                menu.remove();
+                document.removeEventListener('click', handler);
+            });
+        }, 10);
+    });
+}
+
+function moveThread(threadId, wsId) {
+    _csrfFetch('/workspaces/' + wsId + '/threads/' + threadId, {
+        method: 'PUT'
+    }).then(function(r) {
+        if (r.ok) location.reload();
+    });
+}
+
+function showCreateAndMove(threadId) {
+    var m = document.querySelector('.ws-context-menu');
+    if (m) m.remove();
+    showCreateWorkspace();
+}
+
+// Right-click handler for thread items
+(function() {
+    document.querySelectorAll('.thread-item:not(.ws-thread)').forEach(function(el) {
+        el.addEventListener('contextmenu', function(e) {
+            var threadId = el.getAttribute('data-thread-id');
+            if (threadId) showMoveThreadMenu(e, threadId);
+        });
+    });
+})();
 
 </script>
 {% endblock %}

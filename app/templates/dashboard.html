@@ -119,6 +119,34 @@
             </div>
             {% endif %}
 
+            <!-- Workspaces -->
+            {% if workspaces %}
+            <div class="dashboard-section" style="margin-top:1.5rem">
+                <div class="dashboard-header" style="margin-bottom:0.75rem">
+                    <h3 style="font-size:1.1rem;margin:0">📁 Workspaces</h3>
+                    <a href="{{ url_for("workspaces.index") }}" class="btn btn-outline btn-sm">Manage</a>
+                </div>
+                <div class="workspace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+                    {% for ws in workspaces %}
+                    <div class="workspace-card" style="background:var(--bg-card,#fff);border:1px solid var(--border,#ddd);border-radius:10px;padding:14px;transition:box-shadow .2s">
+                        <div style="font-weight:600;margin-bottom:4px">{{ ws.name }}</div>
+                        {% if ws.description %}
+                        <div style="font-size:0.82rem;color:var(--text-muted,#888);margin-bottom:8px">{{ ws.description[:80] }}{{ "..." if ws.description|length > 80 }}</div>
+                        {% endif %}
+                        <div style="font-size:0.78rem;color:var(--text-muted,#888)">
+                            {{ ws_thread_counts.get(ws.id, 0) }} thread{{ "s" if ws_thread_counts.get(ws.id, 0) != 1 }}
+                        </div>
+                        <form method="POST" action="{{ url_for("dashboard.create_thread") }}" style="margin-top:10px">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="workspace_id" value="{{ ws.id }}">
+                            <button type="submit" class="btn btn-outline btn-sm" style="font-size:0.78rem">+ New Chat in {{ ws.name[:20] }}</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Thread List -->
             {% if threads %}
             <div class="thread-grid" id="thread-grid">

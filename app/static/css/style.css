@@ -1727,3 +1727,208 @@ a:hover {
 .btn-tts:hover {
     transform: scale(1.2);
 }
+
+/* ===== Workspace sidebar styles ===== */
+.sidebar-workspaces {
+    padding: 0 12px;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.sidebar-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px 4px;
+    margin-top: 4px;
+}
+
+.sidebar-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.workspace-group {
+    margin-bottom: 2px;
+}
+
+.workspace-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.workspace-header:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.workspace-collapse-icon {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    width: 12px;
+    text-align: center;
+}
+
+.workspace-collapse-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.workspace-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.workspace-thread-count {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.workspace-menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.workspace-menu-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+}
+
+.workspace-threads {
+    padding-left: 12px;
+}
+
+.workspace-threads .thread-item {
+    padding-left: 20px;
+}
+
+.ws-new-chat-form {
+    padding: 2px 8px 4px 20px;
+}
+
+.ws-new-chat-btn {
+    width: 100%;
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.ws-new-chat-btn:hover {
+    opacity: 1;
+    color: var(--text);
+}
+
+.btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.btn-icon:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+}
+
+/* Workspace context menu */
+.ws-context-menu {
+    position: fixed;
+    background: var(--bg-card, #1a1a2e);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+}
+
+.ws-context-menu-item {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text);
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.ws-context-menu-item:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.ws-context-menu-item.danger {
+    color: #e74c3c;
+}
+
+/* Create workspace modal */
+.ws-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ws-modal {
+    background: var(--bg-card, #1a1a2e);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 90%;
+    max-width: 400px;
+}
+
+.ws-modal h3 {
+    margin: 0 0 16px;
+    color: var(--text);
+}
+
+.ws-modal input, .ws-modal textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg, #0f0f1a);
+    color: var(--text);
+    margin-bottom: 12px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.ws-modal textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+.ws-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}

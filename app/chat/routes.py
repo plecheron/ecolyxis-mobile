@@ -11,7 +11,8 @@ from flask import render_template, request, Response, current_app, send_from_dir
 from flask_login import login_required, current_user
 
 from app import db
-from app.models import Thread, Message
+from app.models import Thread, Message, Workspace
+from app.llm import get_workspace_context
 from app.chat import (
     chat_bp,
     get_client,
@@ -54,6 +55,16 @@ def view(thread_id):
     _, used, limit = check_rate_limit()
     rate_info = {"used": used, "limit": limit, "is_premium": current_user.is_premium}
 
+    workspaces = (
+        Workspace.query.filter_by(user_id=current_user.id)
+        .order_by(Workspace.updated_at.desc())
+        .all()
+    )
+    # Eagerly load threads per workspace for the sidebar template
+    workspace_threads = {}
+    for ws in workspaces:
+        workspace_threads[ws.id] = ws.threads.order_by(Thread.updated_at.desc()).all()
+
     return render_template(
         "chat.html",
         thread=thread,
@@ -62,6 +73,8 @@ def view(thread_id):
         rate_info=rate_info,
         thread_system_prompt=thread.system_prompt,
         jobs_enabled=current_app.config.get("JOBS_ENABLED", False),
+        workspaces=workspaces,
+        workspace_threads=workspace_threads,
     )
 
 
@@ -94,7 +107,8 @@ def send_message(thread_id):
     save_user_message(thread, content, images)
 
     client = get_client()
-    msgs = client.build_messages(thread, mode=mode)
+    workspace_context = get_workspace_context(thread)
+    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
     return _sse(_stream_llm(
         client, msgs, mode, current_user.id, current_user.is_premium,
@@ -160,7 +174,8 @@ def edit_message(thread_id, message_id):
     db.session.commit()
 
     client = get_client()
-    msgs = client.build_messages(thread, mode=mode)
+    workspace_context = get_workspace_context(thread)
+    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
     return _sse(_stream_llm(
         client, msgs, mode, current_user.id, current_user.is_premium,
@@ -198,7 +213,8 @@ def regenerate(thread_id):
         db.session.commit()
 
     client = get_client()
-    msgs = client.build_messages(thread, mode=mode)
+    workspace_context = get_workspace_context(thread)
+    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
     return _sse(_stream_llm(
         client, msgs, mode, current_user.id, current_user.is_premium,
@@ -242,7 +258,8 @@ def regenerate_at(thread_id, message_id):
     db.session.commit()
 
     client = get_client()
-    msgs = client.build_messages(thread, mode=mode)
+    workspace_context = get_workspace_context(thread)
+    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
     return _sse(_stream_llm(
         client, msgs, mode, current_user.id, current_user.is_premium,

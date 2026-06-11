@@ -7,8 +7,90 @@ logger = logging.getLogger('ecolyxis.llm')
 # Throttle for live thinking-token progress: emit at most every N reasoning
 # deltas or every T seconds, whichever comes first. Keeps the durable Redis
 # event stream lean (reasoning can run to thousands of tokens).
-_THINK_EMIT_EVERY_TOKENS = 16
+_THINK_EMIT_EVERY_TOKENS=8
 _THINK_EMIT_EVERY_SECONDS = 0.2
+
+
+def get_workspace_context(thread, max_chars=2000):
+    """Build a string of workspace description + sibling thread summaries.
+
+    Returns None if the thread has no workspace or workspace context is disabled.
+    Returns workspace description alone if there are no siblings but a description exists.
+    """
+    if not thread.workspace_id:
+        return None
+    if thread.use_workspace_context is False:
+        return None
+
+    from app.models import Thread, Message, Workspace
+
+    workspace = Workspace.query.get(thread.workspace_id)
+    if not workspace:
+        return None
+
+    # Build header with workspace name and description
+    header = f"## Workspace: {workspace.name}"
+    if workspace.description:
+        header += f"\n{workspace.description}"
+
+    siblings = (
+        Thread.query
+        .filter(
+            Thread.workspace_id == thread.workspace_id,
+            Thread.id != thread.id,
+        )
+        .order_by(Thread.updated_at.desc())
+        .all()
+    )
+
+    sections = []
+    total_len = 0
+
+    for sib in siblings:
+        summary_text = ""
+        if sib.summary:
+            summary_text = sib.summary
+        else:
+            # Fallback: title + first user message preview
+            first_msg = (
+                Message.query
+                .filter_by(thread_id=sib.id, role="user")
+                .order_by(Message.created_at)
+                .first()
+            )
+            if first_msg and first_msg.content:
+                preview = Thread._extract_text(first_msg.content)[:200]
+                summary_text = f"{preview}"
+            # If we have at least a title, use it
+            if not summary_text and sib.title and sib.title != "New Chat":
+                summary_text = sib.title
+
+        if not summary_text:
+            continue
+
+        section = f"### {sib.title or 'Untitled'}\n{summary_text}"
+        section_len = len(section) + 1  # +1 for newline
+
+        if total_len + section_len > max_chars:
+            break
+
+        sections.append(section)
+        total_len += section_len
+
+    # Build the full context string
+    parts = [header]
+
+    if sections:
+        parts.append("")
+        parts.append("## Related Conversations")
+        parts.append("You are in a workspace with multiple related conversations. "
+                      "Here are summaries of the other conversations in this workspace:")
+        parts.append("")
+        parts.append("\n\n".join(sections))
+        parts.append("")
+        parts.append("Use this context to provide consistent, informed responses across conversations.")
+
+    return "\n".join(parts)
 
 
 class LLMClient:
@@ -228,15 +310,23 @@ class LLMClient:
         
         return f"data:{mime};base64,{b64}"
 
-    def build_messages(self, thread, mode="standard"):
+    def build_messages(self, thread, mode="standard", workspace_context=None):
         """Build messages from thread history (all DB messages).
         
         mode: determines whether images are included or replaced with placeholders.
               Only "vision" mode includes images; all others strip them.
+        
+        workspace_context: optional string of sibling thread summaries to inject
+                           into the system prompt.
         """
         from app.models import Message
 
         prompt = thread.system_prompt if thread.system_prompt else self.system_prompt
+        
+        # Append workspace context to system prompt if provided
+        if workspace_context:
+            prompt = prompt + "\n\n" + workspace_context
+        
         msgs = [{"role": "system", "content": prompt}]
 
         history = (

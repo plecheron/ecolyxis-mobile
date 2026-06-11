@@ -59,6 +59,7 @@ def create_app(test_config=None):
     from app.health import health_bp
     from app.pricing import pricing_bp
     from app.jobs.routes import jobs_bp
+    from app.workspace import workspace_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dash_bp)
@@ -73,6 +74,7 @@ def create_app(test_config=None):
     app.register_blueprint(health_bp)
     app.register_blueprint(pricing_bp)
     app.register_blueprint(jobs_bp)
+    app.register_blueprint(workspace_bp)
 
     # CSRF protection for all non-API POST routes
     from app.csrf import generate_csrf_token, validate_csrf_token
@@ -92,6 +94,9 @@ def create_app(test_config=None):
             return None
         # Health checks — exempt
         if request.path.startswith("/health"):
+            return None
+        # Workspace API routes — JSON endpoints, exempt from CSRF
+        if request.path.startswith("/workspaces"):
             return None
         # Stripe webhook — exempt (authenticated by Stripe signature, not a CSRF
         # token). Scoped to the exact path so other state-changing /billing/*
