@@ -762,3 +762,70 @@ def rate_limit_status():
         "limit": limit,
         "is_premium": current_user.is_premium,
     }
+
+
+@chat_bp.route("/api/workspace-context/<string:thread_id>")
+@login_required
+def workspace_context_stats(thread_id):
+    """Return workspace context usage stats for a thread."""
+    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+
+    if not thread.workspace_id or thread.use_workspace_context is False:
+        return {"enabled": False}
+
+    workspace = Workspace.query.get(thread.workspace_id)
+    if not workspace:
+        return {"enabled": False}
+
+    max_chars = 2000
+    siblings = (
+        Thread.query
+        .filter(
+            Thread.workspace_id == thread.workspace_id,
+            Thread.id != thread.id,
+        )
+        .order_by(Thread.updated_at.desc())
+        .all()
+    )
+
+    total_len = 0
+    contributing = 0
+
+    for sib in siblings:
+        summary_text = ""
+        if sib.summary:
+            summary_text = sib.summary
+        else:
+            from app.models import Message as MsgModel
+            first_msg = (
+                MsgModel.query
+                .filter_by(thread_id=sib.id, role="user")
+                .order_by(MsgModel.created_at)
+                .first()
+            )
+            if first_msg and first_msg.content:
+                preview = Thread._extract_text(first_msg.content)[:200]
+                summary_text = preview
+            if not summary_text and sib.title and sib.title != "New Chat":
+                summary_text = sib.title
+
+        if not summary_text:
+            continue
+
+        section = "### " + (sib.title or "Untitled") + "\n" + summary_text
+        section_len = len(section) + 1
+
+        if total_len + section_len > max_chars:
+            break
+
+        total_len += section_len
+        contributing += 1
+
+    return {
+        "enabled": True,
+        "workspace_name": workspace.name,
+        "workspace_context_chars": total_len,
+        "workspace_context_budget": max_chars,
+        "sibling_thread_count": contributing,
+        "total_siblings": len(siblings),
+    }

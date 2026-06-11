@@ -132,9 +132,10 @@ async function bulkDelete() {
     deleteBtn.textContent = 'Deleting…';
 
     try {
+        const csrfToken = document.querySelector('meta[name=csrf-token]').content;
         const resp = await fetch('/threads/bulk-delete', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ thread_ids: Array.from(selectedThreads) }),
         });
         const data = await resp.json();

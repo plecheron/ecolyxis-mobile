@@ -31,6 +31,15 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
     @property
+    def display_name(self):
+        """Friendly display name: username if it doesn't look like an email,
+        otherwise the local part (everything before @)."""
+        name = self.username or ''
+        if '@' in name:
+            return name.split('@')[0]
+        return name
+
+    @property
     def is_premium(self):
         return self.tier == "premium" and self.subscription_status in ("active", "trialing")
 
