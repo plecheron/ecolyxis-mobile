@@ -106,6 +106,57 @@ def index():
                            workspaces=workspaces, ws_thread_counts=ws_thread_counts)
 
 
+@dash_bp.route("/dashboard/workspace/<workspace_id>")
+@login_required
+def workspace_detail(workspace_id):
+    workspace = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+
+    threads = (
+        Thread.query.filter_by(workspace_id=workspace_id, user_id=current_user.id)
+        .order_by(Thread.updated_at.desc())
+        .all()
+    )
+
+    thread_ids = [t.id for t in threads]
+
+    # Batch: message counts + last message snippet per thread
+    msg_counts = {}
+    last_snippets = {}
+    if thread_ids:
+        counts = (
+            db.session.query(Message.thread_id, func.count(Message.id))
+            .filter(Message.thread_id.in_(thread_ids))
+            .group_by(Message.thread_id)
+            .all()
+        )
+        msg_counts = dict(counts)
+
+        from sqlalchemy.sql import and_
+        subq = (
+            db.session.query(
+                Message.thread_id,
+                func.max(Message.id).label("max_id")
+            )
+            .filter(Message.thread_id.in_(thread_ids))
+            .group_by(Message.thread_id)
+            .subquery()
+        )
+        last_msgs = (
+            db.session.query(Message.thread_id, Message.content)
+            .join(subq, and_(Message.thread_id == subq.c.thread_id, Message.id == subq.c.max_id))
+            .all()
+        )
+        last_snippets = {tid: (content[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
+
+    return render_template(
+        "workspace_detail.html",
+        workspace=workspace,
+        threads=threads,
+        msg_counts=msg_counts,
+        last_snippets=last_snippets,
+    )
+
+
 @dash_bp.route("/threads", methods=["POST"])
 @login_required
 def create_thread():

@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}{{ workspace.name }} — Ecolyxis{% endblock %}
+{% block body %}
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-actions">
+            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="workspace_id" value="{{ workspace.id }}">
+                <button type="submit" class="btn btn-primary btn-full">+ New Chat in Workspace</button>
+            </form>
+        </div>
+        <nav class="sidebar-threads">
+            {% for t in threads %}
+            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item">
+                <span class="thread-title">{{ t.title }}</span>
+                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
+            </a>
+            {% endfor %}
+            {% if not threads %}
+            <p class="sidebar-empty">No conversations in this workspace</p>
+            {% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            {% if current_user.id == 1 %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
+            <span class="user-name">👤 {{ current_user.display_name }}</span>
+            <div class="sidebar-footer-actions">
+                <a href="{{ url_for('auth.logout') }}" class="sidebar-icon-btn" title="Log Out">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </a>
+            </div>
+        </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="mobile-header">
+            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+            <span class="mobile-title">🌿 Ecolyxis</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
+        </div>
+
+        <div class="dashboard-main">
+            <!-- Breadcrumb -->
+            <nav class="ws-breadcrumb" style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;font-size:0.88rem;color:var(--text-muted,#8b949e);">
+                <a href="{{ url_for('dashboard.index') }}" style="color:var(--accent,#58a6ff);text-decoration:none;">Dashboard</a>
+                <span>›</span>
+                <span style="color:var(--text,#e6edf3);">{{ workspace.name }}</span>
+            </nav>
+
+            <!-- Workspace Header -->
+            <div class="ws-header" style="background:var(--bg-card,#161b22);border:1px solid var(--border,#30363d);border-radius:12px;padding:24px;margin-bottom:1.5rem;">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h2 style="margin:0 0 6px 0;font-size:1.4rem;display:flex;align-items:center;gap:8px;">
+                            📁 <span id="ws-name-display">{{ workspace.name }}</span>
+                        </h2>
+                        {% if workspace.description %}
+                        <p style="margin:0 0 8px 0;color:var(--text-muted,#8b949e);font-size:0.9rem;max-width:600px;word-wrap:break-word;overflow-wrap:break-word;">{{ workspace.description }}</p>
+                        {% endif %}
+                        <span style="font-size:0.8rem;color:var(--text-muted,#8b949e);">{{ threads|length }} thread{{ 's' if threads|length != 1 }}</span>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="workspace_id" value="{{ workspace.id }}">
+                            <button type="submit" class="btn btn-primary">+ New Chat</button>
+                        </form>
+                        <button onclick="showRenameModal()" class="btn btn-outline btn-sm">✏️ Rename</button>
+                        <button onclick="confirmDeleteWorkspace()" class="btn btn-outline btn-sm" style="color:var(--danger,#f85149);border-color:var(--danger,#f85149);">🗑️ Delete Workspace</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thread List -->
+            {% if threads %}
+            <div class="thread-grid" id="thread-grid">
+                {% for t in threads %}
+                <div class="thread-card" id="thread-{{ t.id }}">
+                    <a href="{{ url_for('chat.view', thread_id=t.id) }}">
+                        <h3 ondblclick="startDashRename(event, '{{ t.id }}', this)">{{ t.title }}</h3>
+                        <div class="thread-card-meta">
+                            <span>{{ msg_counts.get(t.id, 0) }} messages</span>
+                            <span>{{ t.updated_at.strftime('%d %B %Y, %H:%M') }}</span>
+                        </div>
+                        {% if t.id in last_snippets %}
+                        <div class="thread-card-snippet">{{ last_snippets[t.id] }}</div>
+                        {% endif %}
+                    </a>
+                    <button class="btn-delete"
+                            hx-delete="{{ url_for('dashboard.delete_thread', thread_id=t.id) }}"
+                            hx-target="#thread-{{ t.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete this conversation?">🗑️</button>
+                    {% if current_user.is_premium %}
+                    <div class="export-dropdown">
+                        <button class="btn-export" onclick="event.preventDefault();event.stopPropagation();toggleExportMenu('{{ t.id }}')">📤</button>
+                        <div class="export-menu" id="export-{{ t.id }}">
+                            <a href="{{ url_for('chat.export_thread', thread_id=t.id, fmt='json') }}" onclick="event.stopPropagation()">Export JSON</a>
+                            <a href="{{ url_for('chat.export_thread', thread_id=t.id, fmt='md') }}" onclick="event.stopPropagation()">Export Markdown</a>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>🌱 No threads in this workspace yet.</p>
+                <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="workspace_id" value="{{ workspace.id }}">
+                    <button type="submit" class="btn btn-primary btn-lg">Start a Chat</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+
+<!-- Rename Modal -->
+<div id="rename-modal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;" onclick="if(event.target===this)closeRenameModal()">
+    <div style="background:var(--bg-card,#161b22);border:1px solid var(--border,#30363d);border-radius:12px;padding:24px;max-width:440px;width:90%;">
+        <h3 style="margin:0 0 16px 0;font-size:1.1rem;">Rename Workspace</h3>
+        <input type="text" id="ws-rename-input" value="{{ workspace.name }}" style="width:100%;padding:10px 12px;border:1px solid var(--border,#30363d);border-radius:8px;background:var(--bg-input,#21262d);color:var(--text,#e6edf3);font-size:0.95rem;margin-bottom:12px;">
+        <textarea id="ws-desc-input" placeholder="Description (optional)" style="width:100%;padding:10px 12px;border:1px solid var(--border,#30363d);border-radius:8px;background:var(--bg-input,#21262d);color:var(--text,#e6edf3);font-size:0.9rem;min-height:60px;resize:vertical;margin-bottom:16px;">{{ workspace.description or '' }}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button onclick="closeRenameModal()" class="btn btn-outline btn-sm">Cancel</button>
+            <button onclick="saveWorkspaceRename()" class="btn btn-primary btn-sm">Save</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.btn-export{background:none;border:none;cursor:pointer;font-size:1rem;padding:4px;opacity:0.5;transition:opacity 0.2s;position:absolute;top:8px;right:36px}
+.btn-export:hover{opacity:1}
+.export-dropdown{position:absolute;top:4px;right:4px}
+.export-menu{display:none;position:absolute;top:100%;right:0;background:var(--bg-card,#161b22);border:1px solid var(--border,#30363d);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);z-index:50;min-width:160px;overflow:hidden}
+.export-menu.show{display:block}
+.export-menu a{display:block;padding:8px 14px;font-size:0.85rem;color:var(--text,#e6edf3);text-decoration:none}
+.export-menu a:hover{background:var(--bg-hover,#21262d)}
+</style>
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script>
+var workspaceId = "{{ workspace.id }}";
+var csrfToken = "{{ csrf_token() }}";
+
+function toggleExportMenu(tid) {
+    document.querySelectorAll('.export-menu').forEach(function(m) {
+        if (m.id !== 'export-' + tid) m.classList.remove('show');
+    });
+    var menu = document.getElementById('export-' + tid);
+    if (menu) menu.classList.toggle('show');
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.export-dropdown')) {
+        document.querySelectorAll('.export-menu').forEach(function(m) { m.classList.remove('show'); });
+    }
+});
+
+function showRenameModal() {
+    var modal = document.getElementById('rename-modal');
+    modal.style.display = 'flex';
+}
+
+function closeRenameModal() {
+    document.getElementById('rename-modal').style.display = 'none';
+}
+
+function saveWorkspaceRename() {
+    var newName = document.getElementById('ws-rename-input').value.trim();
+    var newDesc = document.getElementById('ws-desc-input').value.trim();
+    if (!newName) return;
+
+    fetch('/workspaces/' + workspaceId, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({name: newName, description: newDesc}),
+    }).then(function(r) {
+        if (r.ok) {
+            document.getElementById('ws-name-display').textContent = newName;
+            closeRenameModal();
+            // Update breadcrumb
+            document.querySelector('.ws-breadcrumb span:last-child').textContent = newName;
+        } else {
+            r.json().then(function(d) { alert(d.error || 'Failed to rename'); });
+        }
+    }).catch(function() { alert('Network error'); });
+}
+
+function confirmDeleteWorkspace() {
+    if (!confirm('Delete this workspace? Threads will become unassigned.')) return;
+    fetch('/workspaces/' + workspaceId, {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': csrfToken },
+    }).then(function(r) {
+        if (r.ok) {
+            window.location.href = "{{ url_for('dashboard.index') }}";
+        } else {
+            alert('Failed to delete workspace');
+        }
+    }).catch(function() { alert('Network error'); });
+}
+
+function startDashRename(event, threadId, el) {
+    // Inline thread rename (simplified)
+    event.preventDefault();
+    event.stopPropagation();
+    var current = el.textContent.trim();
+    var newTitle = prompt('Rename thread:', current);
+    if (newTitle && newTitle !== current) {
+        fetch('/chat/api/threads/' + threadId, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({title: newTitle}),
+        }).then(function(r) {
+            if (r.ok) el.textContent = newTitle;
+        });
+    }
+}
+</script>
+{% endblock %}

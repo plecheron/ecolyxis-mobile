@@ -135,22 +135,22 @@
                     <h3 style="font-size:1.1rem;margin:0">📁 Workspaces</h3>
                     <a href="{{ url_for("dashboard.index") }}" class="btn btn-outline btn-sm">Manage</a>
                 </div>
-                <div class="workspace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+                <div class="workspace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr));gap:12px;max-width:100%">
                     {% for ws in workspaces %}
-                    <div class="workspace-card" style="background:var(--bg-card,#fff);border:1px solid var(--border,#ddd);border-radius:10px;padding:14px;transition:box-shadow .2s">
-                        <div style="font-weight:600;margin-bottom:4px">{{ ws.name }}</div>
+                    <a href="{{ url_for('dashboard.workspace_detail', workspace_id=ws.id) }}" class="workspace-card" style="display:block;background:var(--bg-card,#161b22);border:1px solid var(--border,#30363d);border-radius:10px;padding:14px;transition:all .2s;overflow:hidden;max-width:100%;word-wrap:break-word;overflow-wrap:break-word;text-decoration:none;color:inherit;cursor:pointer">
+                        <div style="font-weight:600;margin-bottom:4px;overflow-wrap:break-word;word-break:break-word">{{ ws.name }}</div>
                         {% if ws.description %}
-                        <div style="font-size:0.82rem;color:var(--text-muted,#888);margin-bottom:8px">{{ ws.description[:80] }}{{ "..." if ws.description|length > 80 }}</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted,#888);margin-bottom:8px;overflow-wrap:break-word;word-break:break-word">{{ ws.description[:80] }}{{ "..." if ws.description|length > 80 }}</div>
                         {% endif %}
                         <div style="font-size:0.78rem;color:var(--text-muted,#888)">
                             {{ ws_thread_counts.get(ws.id, 0) }} thread{{ "s" if ws_thread_counts.get(ws.id, 0) != 1 }}
                         </div>
-                        <form method="POST" action="{{ url_for("dashboard.create_thread") }}" style="margin-top:10px">
+                        <form method="POST" action="{{ url_for('dashboard.create_thread') }}" style="margin-top:10px" onclick="event.stopPropagation()">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="workspace_id" value="{{ ws.id }}">
-                            <button type="submit" class="btn btn-outline btn-sm" style="font-size:0.78rem">+ New Chat in {{ ws.name[:20] }}</button>
+                            <button type="submit" class="btn btn-outline btn-sm" style="font-size:0.78rem" onclick="event.stopPropagation()">+ New Chat in {{ ws.name[:20] }}</button>
                         </form>
-                    </div>
+                    </a>
                     {% endfor %}
                 </div>
             </div>
@@ -223,6 +223,7 @@
 .export-menu.show{display:block}
 .export-menu a{display:block;padding:8px 14px;font-size:0.85rem;color:var(--text,#333);text-decoration:none}
 .export-menu a:hover{background:var(--bg-hover,#f5f5f5)}
+.workspace-card:hover{border-color:var(--green-primary,#2ecc71)!important;box-shadow:0 0 12px rgba(46,204,113,0.15);transform:translateY(-1px)}
 </style>
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
