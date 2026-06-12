@@ -191,6 +191,8 @@
 .context-badge--empty{background:rgba(139,148,158,0.1);color:var(--text-muted,#8b949e);border:1px solid rgba(139,148,158,0.2)}
 </style>
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script>document.addEventListener("htmx:configRequest",function(e){var t=document.querySelector('meta[name="csrf-token"]');if(t)e.detail.headers["X-CSRFToken"]=t.content});</script>
+
 <script>
 var workspaceId = "{{ workspace.id }}";
 var csrfToken = "{{ csrf_token() }}";

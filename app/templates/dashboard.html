@@ -243,6 +243,7 @@
 .workspace-card:hover{border-color:var(--green-primary,#2ecc71)!important;box-shadow:0 0 12px rgba(46,204,113,0.15);transform:translateY(-1px)}
 </style>
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script>document.addEventListener("htmx:configRequest",function(e){var t=document.querySelector('meta[name="csrf-token"]');if(t)e.detail.headers["X-CSRFToken"]=t.content});</script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script src="{{ url_for('static', filename='js/webauthn.js') }}">
 function toggleExportMenu(tid) {
