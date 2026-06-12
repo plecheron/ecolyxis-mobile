@@ -1,61 +1,103 @@
-# Ecolyxis — 25 Possible Improvements
+# Ecolyxis — Suggested Improvements
 
-## Security
+*2026-06-12. Replaces the previous list, which was almost entirely done (CSRF,
+health endpoint, migrations, Redis, systemd units, tests, export, pricing page,
+secrets in `.env`, rate limiting). Items below are verified against the current
+code, the 2026-06-06 investigation (`INVESTIGATION.md`), and the fixes that
+landed since (#86–#97).*
 
-1. **Move secrets to environment variables** — Stripe keys, DB credentials, SECRET_KEY, and webhook secrets are hardcoded in `config.py`. Use `.env` files or a secrets manager. Never commit live Stripe keys to code.
+## High priority
 
-2. **Enable HTTPS on Caddy** — Currently only listening on `:80`. If this server receives direct traffic (or even just internally), Caddy should serve TLS. Add the domain and let Caddy's auto-TLS handle it, or terminate at the VPS with proper cert forwarding.
+1. **Serve HTTPS end-to-end and flip `SESSION_COOKIE_SECURE=1`** (#98). Caddy still
+   listens on `:80` only, and `.env` does not set `SESSION_COOKIE_SECURE`, so
+   login cookies and chat content travel in plaintext over the public
+   internet — for a live product taking Stripe payments. `config.py` already
+   gates the flag and documents the cutover (`config.py:28-37`); the work is
+   getting a cert onto the edge (Caddy auto-TLS on the VPS or the gateway),
+   then setting the env var. Everything else security-wise from the
+   investigation has been fixed; this is the last big one.
 
-3. **Remove the stale SQLite database** — `instance/ecolyxis.db` (30MB) appears unused since the PostgreSQL migration. Remove it to reduce confusion and avoid accidental fallback.
+2. **Make health checks reflect generation capability, not just process
+   liveness** (#99). During the investigation, the image backend returned `/health`
+   200 while every generation job hung and failed; video has **zero successful
+   generations ever** in the DB. `app/health.py` only pings `ECOLYXIS_API_URL
+   /health`. Add a synthetic canary — a periodic tiny generation per kind
+   (image/video/edit) via the normal job path — and surface per-kind
+   pass/fail + last-success timestamp in `/health`. Until then, two of the
+   four advertised media features can be silently down for weeks.
 
-4. **Rotate exposed credentials** — The Stripe secret key, webhook secret, and DB password were in `config.py`. Even after moving to env vars, rotate all of them since they've been in plaintext on disk.
+3. **Add monitoring and alerting** (#100). `/health` exists but nothing watches it.
+   Alert on: `/health` degraded, worker heartbeat staleness (the reaper's
+   signal already exists in `app/jobs/worker.py`), Redis queue depth, job
+   error rate, and disk usage. A `metrics.py` already sits in
+   `app/admin.disabled/` — revive it or wire basic metrics into the admin
+   controller service.
 
-5. **Add CSRF protection** — Flask forms should have CSRF tokens. Use Flask-WTF or similar to prevent cross-site request forgery on all POST routes.
+## Reliability & architecture
 
-## Reliability
+4. **Remove Redis as a single point of failure** (#101). Redis on web1 holds the job
+   queue, event streams, and claim lists — if web1's Redis dies, all durable
+   generation stops and in-flight job events are lost. At minimum enable AOF
+   persistence; better, move Redis to its own host (or add a replica) so web1
+   and web2 are symmetric. Also worth a deliberate answer: what should the app
+   do when Redis is unreachable (fail the POST? fall back to the legacy
+   path?) — today that's untested (`INVESTIGATION.md` Phase 3 note).
 
-6. **Add a systemd service for Gunicorn** — Gunicorn appears to be running but not via systemd. Create a proper service unit so it auto-restarts on crash and starts on boot.
+5. **Decide web2's role and fix local-disk uploads** (#102). `uploads/` (80 MB,
+   growing) lives on web1's local disk. If web2 (192.168.122.221) ever serves
+   traffic, every generated image/video 404s there. Either retire web2,
+   or move media to shared/object storage. While at it: nothing prunes
+   orphaned uploads — add that to `cleanup_expired.py`.
 
-7. **Set up the cleanup cron job** — `cleanup_expired.py` exists but isn't in crontab. Expired sessions, old API usage records, and stale data should be purged automatically.
+6. **Automate PostgreSQL backups** (#103). The investigation's rollback point was a
+   manual `pg_dump` to `/tmp`. Schedule dumps (or WAL archiving) on
+   ecolyxis_db1 with retention and off-host copies, and test a restore once.
+   Wallet balances and Stripe transaction records live in this DB.
 
-8. **Add health check endpoints** — A `/health` endpoint that verifies DB connectivity and LLM API availability. Useful for monitoring and alerts.
+7. **Make the cleanup job's scheduling discoverable, and rotate logs**
+   (#104). `cleanup.log` is being written (so something runs `cleanup_expired.py`),
+   but there's no systemd timer and no user crontab entry — whatever schedules
+   it is invisible to the next operator. Move it to a systemd timer next to
+   the units in `deploy/`. Separately, neither `cleanup.log` (2.4 MB) nor app
+   logging has rotation; add `logrotate` configs or `RotatingFileHandler`.
 
-9. **Implement proper error logging** — Use structured logging (JSON) with rotation. `server.log` is currently unstructured and will grow indefinitely.
+## Code quality
 
-10. **Add database migrations** — No migration tool detected (no Alembic/Flask-Migrate). Schema changes risk data loss. Add Flask-Migrate before the next model change.
+8. **Retire the legacy generation paths** (#105). `JOBS_ENABLED=1` is live, so after
+   a soak period delete: the legacy Postgres LISTEN/NOTIFY queue
+   (`app/queue.py` + `LLMQueueEntry` model + `instance/queue.db`), the legacy
+   in-request SSE fallbacks woven through the chat blueprint
+   (`app/chat/images.py` is 923 lines and `routes.py` 832 largely because both
+   paths coexist), and `app/admin.disabled/`. This roughly halves the chat
+   blueprint and removes the most confusing code in the repo. Keep the
+   TTS direct path — it's intentionally legacy (read-aloud fetch).
 
-## Performance
+9. **Raise test coverage on the thin modules** (#106). Overall line coverage is 50%;
+   auth (96%), models (97%), and billing webhook (88%) are solid, but
+   chat/routes 27%, queue 19%, export 24%, tts 25%, dashboard 29%, wallet 32%.
+   Wallet especially — it moves money. (Deleting the legacy paths in #8
+   improves this for free.) Also do one live passkey register/login check:
+   `webauthn` is installed now, but the feature returned 501 in prod as of
+   2026-06-06 and the fix (#89–#97) hasn't been verified end-to-end.
 
-11. **Add Redis for session/cache** — Flask sessions and rate limiting could use Redis instead of hitting PostgreSQL for every request. Would also enable proper SSE connection tracking.
+10. **Add CI and script the deploy ritual** (#107). The hermetic pytest suite (148
+    tests, ~20 s, no GPU/Redis needed) is ideal CI material, but nothing runs
+    it automatically. Add a CI job on push, and turn the documented manual
+    ritual (pytest → `flask db upgrade` → restart `ecolyxis` +
+    `ecolyxis-worker`) into a single `deploy/deploy.sh` so a step can't be
+    forgotten — restarting web but not the worker after a handler change is an
+    easy silent failure.
 
-12. **Implement response caching** — Cache repeated LLM responses or at minimum cache the landing page and static assets more aggressively via Caddy.
+11. **Run the benchmark suite on a schedule** (#108). `benchmark/` is a deterministic
+    intelligence benchmark against the live `/v1` API with no LLM judge —
+    perfect for a nightly run to catch model/backend regressions (quantization
+    changes, llama.cpp upgrades, GPU issues). Today it only runs when someone
+    remembers it exists. Pairs naturally with #2 and #3.
 
-13. **Optimize Gunicorn worker count** — 3 workers with 2 threads on 2 vCPU/2GB RAM is reasonable, but monitor if async workers (gevent/eventlet) would handle SSE streaming better than threads.
+## Product
 
-14. **Add database connection pooling tuning** — PgBouncer is there but verify pool sizes match Gunicorn worker count to avoid connection starvation under load.
-
-15. **Lazy-load images in chat** — If chat history includes uploaded images, load them on scroll rather than all at once for long threads.
-
-## User Experience
-
-16. **Add conversation export** — Let users export threads as Markdown, PDF, or JSON. Useful for paying customers who want records.
-
-17. **Improve mobile responsiveness** — Audit the chat interface on mobile. SSE streaming + HTMX can be janky on slow connections; add loading states and reconnection logic.
-
-18. **Add a pricing page** — The landing page mentions "Get Started — It's Free" but there's no visible pricing for premium. Users won't convert if they can't see the value.
-
-19. **Implement dark mode** — A sustainability-themed brand should offer dark mode (saves energy on OLED screens and fits the aesthetic).
-
-20. **Add typing indicators and better streaming UX** — Show a typing animation while waiting for first token. Handle disconnections gracefully with reconnection and message recovery.
-
-## DevOps & Code Quality
-
-21. **Set up CI/CD** — No evidence of automated testing or deployment. Add GitHub Actions (or similar) for linting, tests, and automated deploys to the VMs.
-
-22. **Add .gitignore and proper repo structure** — Ensure `instance/`, `uploads/`, `venv/`, and config with secrets are gitignored. The `.bak` cleanup showed these weren't being managed well.
-
-23. **Write tests** — No test files found. Add pytest with coverage for auth flows, billing webhooks, rate limiting, and chat endpoints. Critical for a live product handling payments.
-
-24. **Monitor and alert** — Set up uptime monitoring (UptimeRobot, or self-hosted) for the public endpoint. Monitor Gunicorn worker health, DB connections, and disk space.
-
-25. **Rate limit the API endpoints** — Free-tier chat is rate limited, but ensure signup, login, password reset, and contact form are also rate limited to prevent abuse and brute force.
+12. **Either make video generation work or unship it** (#109). Zero successes ever
+    in the DB, yet it's an advertised feature with a UI mode. Once the canary
+    from #2 exists you'll know within a day whether the WAN 2.2 backend is
+    fixed; until it's reliable, hiding the mode beats charging premium users
+    for guaranteed failures.
