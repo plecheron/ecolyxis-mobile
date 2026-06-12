@@ -239,3 +239,45 @@ def test_submit_image_empty_prompt_rejected(app, db, make_user, login_as, client
     thread = _thread(db, user)
     login_as(user)
     assert client.post(f"/jobs/image/{thread.id}", json={"prompt": "  "}).status_code == 400
+
+
+def test_submit_image_bad_params_rejected(app, db, make_user, login_as, client, fake_redis):
+    """#93: malformed numeric params return a clean 400, not a 500."""
+    user = make_user(email="badparam@example.com")
+    thread = _thread(db, user)
+    login_as(user)
+    r = client.post(f"/jobs/image/{thread.id}", json={"prompt": "sunset", "width": "banana"})
+    assert r.status_code == 400
+    assert "width" in r.get_json()["error"]
+
+
+def test_free_tier_generation_quota(app, db, make_user, login_as, client, fake_redis):
+    """#91: media jobs count against a generation quota; upscale included."""
+    user = make_user(email="quota@example.com")
+    thread = _thread(db, user)
+    limit = app.config["RATE_LIMIT_GENERATIONS"]
+    for _ in range(limit):
+        _make_job(db, user, thread, "image", {"prompt": "p"})
+    login_as(user)
+
+    r = client.post(f"/jobs/image/{thread.id}", json={"prompt": "one more"})
+    assert r.status_code == 429
+    assert r.get_json()["error"] == "rate_limited"
+
+    img = GeneratedImage(user_id=user.id, thread_id=thread.id, prompt="p", seed=1,
+                         width=128, height=128, filename="q.png")
+    db.session.add(img)
+    db.session.commit()
+    r = client.post(f"/jobs/upscale/{thread.id}", json={"image_id": img.id})
+    assert r.status_code == 429
+
+
+def test_premium_user_not_generation_limited(app, db, make_user, login_as, client, fake_redis):
+    user = make_user(email="quotaprem@example.com", tier="premium",
+                     subscription_status="active")
+    thread = _thread(db, user)
+    for _ in range(app.config["RATE_LIMIT_GENERATIONS"] + 1):
+        _make_job(db, user, thread, "image", {"prompt": "p"})
+    login_as(user)
+    r = client.post(f"/jobs/image/{thread.id}", json={"prompt": "more"})
+    assert r.status_code == 202

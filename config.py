@@ -55,6 +55,7 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
     # Rate limiting (free tier)
     RATE_LIMIT_MESSAGES = 5
+    RATE_LIMIT_GENERATIONS = 5  # GPU-bound media jobs (image/video/edit/upscale/animate)
     RATE_LIMIT_WINDOW_SECONDS = 3600  # 60 minutes
     HIDREAM_URL = os.environ.get("HIDREAM_URL", "http://10.0.0.6:8083")
     WAN22_URL = os.environ.get("WAN22_URL", "http://10.0.0.6:8085")

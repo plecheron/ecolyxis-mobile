@@ -151,3 +151,24 @@ def test_logout_redirects_to_landing(client, db, make_user, login_as):
     login_as(user)
     resp = client.get("/logout")
     assert resp.status_code == 302
+
+
+def test_login_next_rejects_offsite_redirect(client, db, make_user):
+    """#90: ?next= must not redirect off-site after login."""
+    make_user(email="redir@example.com", password="secret123")
+    for evil in ("https://evil.com", "//evil.com", "/\\evil.com", "javascript:alert(1)"):
+        resp = client.post(f"/login?next={evil}",
+                           data={"login": "redir@example.com", "password": "secret123"})
+        assert resp.status_code == 303
+        assert resp.headers["Location"].startswith("/")
+        assert "evil.com" not in resp.headers["Location"]
+        assert not resp.headers["Location"].startswith("//")
+        client.get("/logout")
+
+
+def test_login_next_allows_relative_path(client, db, make_user):
+    make_user(email="redir2@example.com", password="secret123")
+    resp = client.post("/login?next=/dashboard",
+                       data={"login": "redir2@example.com", "password": "secret123"})
+    assert resp.status_code == 303
+    assert resp.headers["Location"] == "/dashboard"

@@ -12,5 +12,4 @@ alembic>=1.13
 pillow>=10.0
 tiktoken>=0.13
 markdown>=3.6
-# Optional: enables WebAuthn/passkey auth. Endpoints 501 gracefully if absent.
-# webauthn>=2.0
+webauthn>=2.0

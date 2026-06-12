@@ -1,5 +1,10 @@
 /* ===== WebAuthn Biometric Registration ===== */
 
+function csrfHeaders(extra) {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return Object.assign({ 'X-CSRFToken': meta ? meta.content : '' }, extra || {});
+}
+
 function escapeHtml(s) {
     const d = document.createElement('div');
     d.textContent = s;
@@ -53,7 +58,7 @@ async function registerBiometric() {
     btn.disabled = true;
     btn.textContent = 'Waiting for biometric...';
     try {
-        const beginResp = await fetch('/webauthn/register-begin', { method: 'POST' });
+        const beginResp = await fetch('/webauthn/register-begin', { method: 'POST', headers: csrfHeaders() });
         if (!beginResp.ok) throw new Error((await beginResp.json()).error || 'Failed');
         const options = await beginResp.json();
         options.challenge = bufferDecode(options.challenge);
@@ -83,7 +88,7 @@ async function registerBiometric() {
         };
         const finishResp = await fetch('/webauthn/register-finish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(finishData),
         });
         const result = await finishResp.json();
@@ -102,6 +107,6 @@ async function registerBiometric() {
 
 async function removeWebAuthnDevice(id) {
     if (!confirm('Remove this device?')) return;
-    await fetch('/webauthn/credentials/' + id, { method: 'DELETE' });
+    await fetch('/webauthn/credentials/' + id, { method: 'DELETE', headers: csrfHeaders() });
     loadWebAuthnDevices();
 }

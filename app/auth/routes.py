@@ -1,6 +1,7 @@
 """Signup, login, logout — password-based auth flows."""
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 from flask import render_template, redirect, url_for, flash, request, make_response, session
 from flask_login import login_user, logout_user, login_required
 
@@ -81,6 +82,21 @@ def signup():
     return render_template("auth/signup.html", captcha=_generate_captcha())
 
 
+def _safe_next(target):
+    """Allow only same-site relative paths for post-login redirects.
+
+    Rejects anything with a scheme or netloc (https://evil.com,
+    //evil.com, \\evil.com) so ?next= cannot send users off-site.
+    """
+    if not target:
+        return None
+    target = target.replace("\\", "/")
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc or not target.startswith("/") or target.startswith("//"):
+        return None
+    return target
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -94,7 +110,7 @@ def login():
             db.session.commit()
             login_user(user)
             flash("Welcome back! 🌿", "success")
-            next_page = request.args.get("next")
+            next_page = _safe_next(request.args.get("next"))
             resp = make_response(redirect(next_page or url_for("dashboard.index")))
             resp.status_code = 303
             return resp

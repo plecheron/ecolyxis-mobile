@@ -25,7 +25,7 @@ def view(slug):
 @blog_bp.route("/admin", methods=["GET", "POST"])
 @login_required
 def admin():
-    if current_user.id != 1:
+    if not current_user.is_admin:
         return redirect(url_for("blog.index"))
     from app.post_model import Post
     if request.method == "POST":
@@ -69,7 +69,7 @@ def admin():
 @blog_bp.route("/admin/<int:post_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit(post_id):
-    if current_user.id != 1:
+    if not current_user.is_admin:
         return redirect(url_for("blog.index"))
     from app.post_model import Post
     post = Post.query.get_or_404(post_id)
@@ -98,7 +98,7 @@ def edit(post_id):
 @blog_bp.route("/admin/<int:post_id>/delete", methods=["POST"])
 @login_required
 def delete(post_id):
-    if current_user.id != 1:
+    if not current_user.is_admin:
         return redirect(url_for("blog.index"))
     from app.post_model import Post
     post = Post.query.get_or_404(post_id)

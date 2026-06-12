@@ -9,6 +9,7 @@
   decoupled from this request.
 """
 import json
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, Response, current_app, jsonify, request
 from flask_login import current_user, login_required
@@ -20,6 +21,56 @@ from app.jobs import enqueue, read_events
 
 jobs_bp = Blueprint("jobs", __name__)
 
+# Job kinds that occupy a GPU backend; counted against the free-tier
+# generation quota (text chat is covered by the message quota instead).
+MEDIA_KINDS = ("image", "video", "edit", "upscale", "animate")
+
+
+class _BadParam(ValueError):
+    """A client-supplied job parameter that fails numeric coercion."""
+
+
+@jobs_bp.errorhandler(_BadParam)
+def _bad_param(exc):
+    return jsonify({"error": f"Invalid numeric value for '{exc.args[0]}'"}), 400
+
+
+def _int_param(data, key, default):
+    try:
+        return int(data.get(key, default))
+    except (TypeError, ValueError):
+        raise _BadParam(key)
+
+
+def _float_param(data, key, default):
+    try:
+        return float(data.get(key, default))
+    except (TypeError, ValueError):
+        raise _BadParam(key)
+
+
+def check_generation_rate_limit():
+    """Free-tier quota for GPU-bound media jobs. Returns (allowed, used, limit).
+
+    Counts GenerationJob rows rather than chat messages: media submits never
+    create a user Message, so the message quota cannot see them.
+    """
+    if current_user.is_premium:
+        return True, 0, None
+    limit = current_app.config["RATE_LIMIT_GENERATIONS"]
+    window = current_app.config["RATE_LIMIT_WINDOW_SECONDS"]
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
+    used = (
+        GenerationJob.query
+        .filter(
+            GenerationJob.user_id == current_user.id,
+            GenerationJob.kind.in_(MEDIA_KINDS),
+            GenerationJob.created_at >= cutoff,
+        )
+        .count()
+    )
+    return used < limit, used, limit
+
 
 def _sse(generator):
     return Response(
@@ -30,10 +81,10 @@ def _sse(generator):
 
 
 def _rate_limited():
-    _, used, limit = check_rate_limit()
+    _, used, limit = check_generation_rate_limit()
     return jsonify({
         "error": "rate_limited",
-        "message": f"Free tier limit reached ({limit} messages per hour). "
+        "message": f"Free tier limit reached ({limit} generations per hour). "
                    "Upgrade to Premium for unlimited.",
         "used": used, "limit": limit,
     }), 429
@@ -101,7 +152,7 @@ def submit_chat(thread_id):
 @login_required
 def submit_image(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    allowed, _, _ = check_rate_limit()
+    allowed, _, _ = check_generation_rate_limit()
     if not allowed:
         return _rate_limited()
     data = request.get_json(silent=True) or {}
@@ -110,9 +161,9 @@ def submit_image(thread_id):
         return jsonify({"error": "Empty prompt"}), 400
     return _enqueue_job(thread, "image", {
         "prompt": prompt,
-        "width": int(data.get("width", 1024)),
-        "height": int(data.get("height", 1024)),
-        "seed": int(data.get("seed", -1)),
+        "width": _int_param(data, "width", 1024),
+        "height": _int_param(data, "height", 1024),
+        "seed": _int_param(data, "seed", -1),
     })
 
 
@@ -120,6 +171,9 @@ def submit_image(thread_id):
 @login_required
 def submit_upscale(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    allowed, _, _ = check_generation_rate_limit()
+    if not allowed:
+        return _rate_limited()
     data = request.get_json(silent=True) or {}
     image_id = data.get("image_id")
     if not image_id:
@@ -138,7 +192,7 @@ def submit_upscale(thread_id):
 @login_required
 def submit_edit(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    allowed, _, _ = check_rate_limit()
+    allowed, _, _ = check_generation_rate_limit()
     if not allowed:
         return _rate_limited()
     data = request.get_json(silent=True) or {}
@@ -151,8 +205,8 @@ def submit_edit(thread_id):
     return _enqueue_job(thread, "edit", {
         "prompt": prompt, "image": image,
         "source_image_id": data.get("source_image_id"),
-        "size": int(data.get("size", 512)), "steps": int(data.get("steps", 4)),
-        "cfg": float(data.get("cfg", 6.0)), "seed": int(data.get("seed", -1)),
+        "size": _int_param(data, "size", 512), "steps": _int_param(data, "steps", 4),
+        "cfg": _float_param(data, "cfg", 6.0), "seed": _int_param(data, "seed", -1),
     })
 
 
@@ -160,7 +214,7 @@ def submit_edit(thread_id):
 @login_required
 def submit_video(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    allowed, _, _ = check_rate_limit()
+    allowed, _, _ = check_generation_rate_limit()
     if not allowed:
         return _rate_limited()
     data = request.get_json(silent=True) or {}
@@ -169,9 +223,9 @@ def submit_video(thread_id):
         return jsonify({"error": "Empty prompt"}), 400
     return _enqueue_job(thread, "video", {
         "prompt": prompt,
-        "width": int(data.get("width", 480)),
-        "height": int(data.get("height", 480)),
-        "frames": int(data.get("frames", 33)),
+        "width": _int_param(data, "width", 480),
+        "height": _int_param(data, "height", 480),
+        "frames": _int_param(data, "frames", 33),
     })
 
 
@@ -179,7 +233,7 @@ def submit_video(thread_id):
 @login_required
 def submit_animate(thread_id):
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    allowed, _, _ = check_rate_limit()
+    allowed, _, _ = check_generation_rate_limit()
     if not allowed:
         return _rate_limited()
     data = request.get_json(silent=True) or {}

@@ -243,10 +243,12 @@ class TestLogUsageAndDebit:
                 1000, 1000,
             )
 
-            # Wallet should still be 0 (no negative)
+            # Full cost is debited even past zero — the overdraft records the
+            # debt from a stream that finished after the balance ran out (#94)
+            from app.api import _tokens_to_pence
             db.session.refresh(wallet)
-            assert wallet.balance_pence == 0
+            assert wallet.balance_pence == -_tokens_to_pence(2000)
 
-            # But usage should still be logged
+            # And usage should still be logged
             usage = ApiUsage.query.filter_by(api_key_id=api_key.id).first()
             assert usage is not None

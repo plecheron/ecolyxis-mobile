@@ -14,6 +14,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
 
     # Subscription
     tier = db.Column(db.String(20), default="free", nullable=False)  # "free" or "premium"
@@ -363,10 +364,15 @@ class RateLimitBucket(db.Model):
     def check_and_consume(key_hash, limit, window=60):
         """Check rate limit and consume a token. Returns (allowed, remaining, retry_after)."""
 
+        from sqlalchemy.exc import IntegrityError
+
         now = time.time()
         refill_rate = limit / window
 
-        bucket = db.session.get(RateLimitBucket, key_hash)
+        # Row lock so concurrent read-modify-writes serialize across the
+        # Gunicorn workers/threads (FOR UPDATE is a no-op on SQLite, which is
+        # single-writer anyway).
+        bucket = db.session.get(RateLimitBucket, key_hash, with_for_update=True)
 
         if bucket is None:
             bucket = RateLimitBucket(
@@ -375,8 +381,17 @@ class RateLimitBucket(db.Model):
                 last_refill=now,
             )
             db.session.add(bucket)
-            db.session.commit()
-            return True, limit - 1, 0
+            try:
+                db.session.commit()
+                return True, limit - 1, 0
+            except IntegrityError:
+                # Lost a concurrent first-insert race — fall through to the
+                # winner's row, locked.
+                db.session.rollback()
+                bucket = db.session.get(RateLimitBucket, key_hash, with_for_update=True)
+                if bucket is None:
+                    # Row vanished between insert and re-read; treat as fresh.
+                    return True, limit - 1, 0
 
         elapsed = now - bucket.last_refill
         bucket.tokens = min(float(limit), bucket.tokens + elapsed * refill_rate)

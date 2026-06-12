@@ -173,36 +173,25 @@ def _log_usage_and_debit(app, api_key_id, wallet_id, endpoint, model, prompt_tok
             if total_tokens > 0:
                 cost_pence = _tokens_to_pence(total_tokens)
                 wallet = db.session.query(Wallet).with_for_update().filter_by(id=wallet_id).one()
-                if wallet.balance_pence >= cost_pence:
-                    wallet.balance_pence -= cost_pence
-                    txn = Transaction(
-                        wallet_id=wallet_id,
-                        type="usage",
-                        amount_pence=-cost_pence,
-                        description=f"API usage: {total_tokens:,} tokens ({prompt_tokens:,} prompt + {completion_tokens:,} completion)",
-                        api_key_id=api_key_id,
-                    )
-                    db.session.add(txn)
-                elif wallet.balance_pence > 0:
-                    # Partial debit: drain remaining balance rather than giving free inference
-                    partial = wallet.balance_pence
-                    wallet.balance_pence = 0
-                    txn = Transaction(
-                        wallet_id=wallet_id,
-                        type="usage",
-                        amount_pence=-partial,
-                        description=f"API usage (partial debit): {total_tokens:,} tokens, charged {partial}p of {cost_pence}p",
-                        api_key_id=api_key_id,
-                    )
-                    db.session.add(txn)
+                # Always debit the full cost, even past zero. A stream cannot be
+                # stopped mid-token, so its final cost may exceed what was left
+                # when it was admitted; the resulting negative balance is bounded
+                # by streams already in flight (authenticate_api rejects new
+                # requests at balance <= 0) and is recouped by the next top-up.
+                wallet.balance_pence -= cost_pence
+                txn = Transaction(
+                    wallet_id=wallet_id,
+                    type="usage",
+                    amount_pence=-cost_pence,
+                    description=f"API usage: {total_tokens:,} tokens ({prompt_tokens:,} prompt + {completion_tokens:,} completion)",
+                    api_key_id=api_key_id,
+                )
+                db.session.add(txn)
+                if wallet.balance_pence < 0:
                     app.logger.warning(
-                        f"Wallet {wallet_id} partially debited {partial}p of {cost_pence}p "
-                        f"for {total_tokens} tokens. Balance now zero."
-                    )
-                else:
-                    app.logger.warning(
-                        f"Wallet {wallet_id} zero balance, skipped debit of {cost_pence}p "
-                        f"for {total_tokens} tokens (streaming request started before balance exhausted)."
+                        f"Wallet {wallet_id} overdrawn to {wallet.balance_pence}p after "
+                        f"debiting {cost_pence}p for {total_tokens} tokens "
+                        f"(stream finished after balance was exhausted)."
                     )
 
             db.session.commit()

@@ -27,7 +27,7 @@
             {% endif %}
         </nav>
         <div class="sidebar-footer">
-            {% if current_user.id == 1 %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
+            {% if current_user.is_admin %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
             <span class="user-name">👤 {{ current_user.display_name }}</span>
             <div class="sidebar-footer-actions">
                 <a href="{{ url_for('auth.logout') }}" class="sidebar-icon-btn" title="Log Out">

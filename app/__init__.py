@@ -102,9 +102,6 @@ def create_app(test_config=None):
         # Health checks — exempt
         if request.path.startswith("/health"):
             return None
-        # Workspace API routes — JSON endpoints, exempt from CSRF
-        if request.path.startswith("/workspaces"):
-            return None
         # Stripe webhook — exempt (authenticated by Stripe signature, not a CSRF
         # token). Scoped to the exact path so other state-changing /billing/*
         # routes (e.g. cancel-subscription) keep CSRF protection.

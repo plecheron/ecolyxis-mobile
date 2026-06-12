@@ -22,7 +22,7 @@
             {% endfor %}
         </nav>
         <div class="sidebar-footer">
-            {% if current_user.id == 1 %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
+            {% if current_user.is_admin %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
             <span class="user-name">👤 {{ current_user.username }}</span>
             <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
         </div>

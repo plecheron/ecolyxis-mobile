@@ -18,12 +18,12 @@ ADMIN_USERNAMES = os.environ.get("ADMIN_USERNAMES", "ashley").split(",")
 
 
 def admin_required(f):
-    """Decorator: must be logged in AND be admin (user ID 1 or in ADMIN_USERNAMES)."""
+    """Decorator: must be logged in AND be admin (is_admin flag or in ADMIN_USERNAMES)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login", next=request.url))
-        if current_user.id != 1 and current_user.username not in ADMIN_USERNAMES:
+        if not current_user.is_admin and current_user.username not in ADMIN_USERNAMES:
             abort(403)
         return f(*args, **kwargs)
     return decorated
