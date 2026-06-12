@@ -166,3 +166,58 @@ def test_payment_failed_marks_past_due(client, db, make_user):
     assert resp.status_code == 200
     db.session.refresh(user)
     assert user.subscription_status == "past_due"
+
+
+def test_credit_topup_is_idempotent(client, db, make_user):
+    """Issue #87: a redelivered checkout.session.completed must not double-credit."""
+    from app.models import Transaction
+
+    user = make_user()
+    wallet = Wallet(user_id=user.id, balance_pence=0)
+    db.session.add(wallet)
+    db.session.commit()
+
+    event = {
+        "type": "checkout.session.completed",
+        "data": {"object": {
+            "metadata": {
+                "type": "api_credit_topup",
+                "user_id": str(user.id),
+                "wallet_id": str(wallet.id),
+                "credit_amount_pence": "500",
+            },
+            "payment_intent": "pi_redelivered",
+        }},
+    }
+    assert _post_event(client, event).status_code == 200
+    # Stripe retries on timeout/non-2xx — the redelivery must be a no-op 200.
+    assert _post_event(client, event).status_code == 200
+
+    db.session.refresh(wallet)
+    assert wallet.balance_pence == 500
+    txns = Transaction.query.filter_by(stripe_payment_intent_id="pi_redelivered").all()
+    assert len(txns) == 1
+
+
+def test_webhook_fails_closed_without_secret(db):
+    """Issue #88: a missing webhook secret must reject events, not trust raw JSON."""
+    from app import create_app
+
+    app = create_app(test_config={"TESTING": True, "STRIPE_WEBHOOK_SECRET": ""})
+    payload = json.dumps({"type": "checkout.session.completed", "data": {"object": {}}})
+    resp = app.test_client().post(
+        "/billing/webhook", data=payload, headers={"Content-Type": "application/json"}
+    )
+    assert resp.status_code == 400
+
+
+def test_startup_requires_webhook_secret_with_live_key():
+    """Issue #88: live Stripe key + no webhook secret must fail at startup."""
+    from app import create_app
+
+    with pytest.raises(RuntimeError, match="STRIPE_WEBHOOK_SECRET"):
+        create_app(test_config={
+            "TESTING": False,
+            "STRIPE_SECRET_KEY": "sk_live_dummy",
+            "STRIPE_WEBHOOK_SECRET": "",
+        })

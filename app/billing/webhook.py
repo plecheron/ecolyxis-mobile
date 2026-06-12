@@ -6,9 +6,10 @@ the same end state.
 """
 from flask import request, current_app
 import stripe
+from sqlalchemy.exc import IntegrityError
 
 from app import db
-from app.models import User
+from app.models import User, Transaction
 from app.billing import billing_bp, _sd, _get_or_create_wallet
 
 
@@ -18,14 +19,17 @@ def webhook():
     stripe.api_key = current_app.config["STRIPE_SECRET_KEY"]
     webhook_secret = current_app.config["STRIPE_WEBHOOK_SECRET"]
 
+    if not webhook_secret:
+        # Never process an unverified payload — a missing secret must fail
+        # closed, not silently accept forged events.
+        current_app.logger.error("STRIPE_WEBHOOK_SECRET not configured; rejecting webhook")
+        return {"error": "Webhook not configured"}, 400
+
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature", "")
 
     try:
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-        else:
-            event = request.json
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except (stripe.SignatureVerificationError, ValueError):
         return {"error": "Invalid signature"}, 400
 
@@ -92,13 +96,34 @@ def _handle_credit_topup(session_obj, metadata):
     wallet = _get_or_create_wallet(user)
     payment_intent_id = _sd(session_obj, "payment_intent")
 
+    # Stripe delivers webhooks at least once — a redelivered event must not
+    # credit the wallet again. The payment intent is the natural dedup key.
+    if payment_intent_id:
+        existing = Transaction.query.filter_by(
+            stripe_payment_intent_id=payment_intent_id
+        ).first()
+        if existing:
+            current_app.logger.info(
+                f"Skipping duplicate credit top-up for payment_intent {payment_intent_id}"
+            )
+            return
+
     amount_pence = int(credit_amount_pence)
     wallet.credit(
         pence=amount_pence,
         description=f"Credit top-up: £{amount_pence / 100:.0f} ({amount_pence / 0.02:,.0f} mtok)",
         stripe_payment_intent_id=payment_intent_id,
     )
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Concurrent redelivery slipped past the read check; the unique index
+        # on stripe_payment_intent_id makes the second commit fail instead of
+        # double-crediting.
+        db.session.rollback()
+        current_app.logger.info(
+            f"Concurrent duplicate credit top-up blocked for payment_intent {payment_intent_id}"
+        )
 
 
 def _handle_subscription_updated(subscription_obj):

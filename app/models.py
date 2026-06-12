@@ -241,7 +241,9 @@ class Transaction(db.Model):
     amount_pence = db.Column(db.Integer, nullable=False)  # positive=topup/refund, negative=usage
     description = db.Column(db.String(255), nullable=False)
     api_key_id = db.Column(db.Integer, db.ForeignKey("api_key.id"), nullable=True)
-    stripe_payment_intent_id = db.Column(db.String(120), nullable=True)
+    # Unique so a redelivered Stripe webhook can never credit twice (NULLs are
+    # distinct, so usage/refund rows without an intent id are unaffected).
+    stripe_payment_intent_id = db.Column(db.String(120), nullable=True, unique=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 

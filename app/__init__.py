@@ -24,6 +24,13 @@ def _validate_config(app):
     whsec = app.config.get("STRIPE_WEBHOOK_SECRET", "")
     if whsec and whsec.startswith("whsec_placeholder"):
         app.logger.warning("STRIPE_WEBHOOK_SECRET is using a placeholder value — webhook verification will fail")
+    # A live Stripe key without a webhook secret means real payment events
+    # would arrive unverifiable. The endpoint already rejects them, but that
+    # silently breaks billing — fail loudly at startup instead.
+    if sk.startswith("sk_live_") and (not whsec or whsec.startswith("whsec_placeholder")):
+        raise RuntimeError(
+            "STRIPE_WEBHOOK_SECRET must be set when a live STRIPE_SECRET_KEY is configured"
+        )
 
 
 def create_app(test_config=None):
