@@ -4,7 +4,7 @@ that every artifact lands on the right user+thread keyed by its own job_id (no
 cross-contamination / "switch"), that premium jobs are served before free ones,
 and that each job's event stream is isolated.
 
-Redis is faked and the GPU backends stubbed, so no daemon/GPU is needed.
+Redis is faked and the remote ecolyxis-api stubbed, so no daemon/GPU is needed.
 """
 import itertools
 import uuid
@@ -26,51 +26,39 @@ def fake_redis():
 
 
 @pytest.fixture
-def stub_llm(monkeypatch):
-    """LLM that echoes the thread's last user message, so each chat job's output
-    is uniquely tied to its own thread — a switch would show the wrong text."""
+def stub_remote(monkeypatch):
+    """Stub the remote ecolyxis-api for both kinds. Chat echoes the thread's
+    last user message, so each chat job's output is uniquely tied to its own
+    thread — a switch would show the wrong text. Each image save gets a unique
+    local filename so a misrouted result would be detectable."""
+    import app.chat as chatmod
+    import app.chat.images as images
+    import app.jobs.api_client as api_client
+
     class FakeClient:
-        def build_messages(self, thread, mode="standard"):
+        def build_messages(self, thread, mode="standard", workspace_context=None):
             last = [m for m in thread.messages if m.role == "user"][-1]
             return [{"role": "user", "content": last.content}]
 
-        def stream_chat(self, msgs, mode="standard"):
-            echo = msgs[-1]["content"]
-            yield {"thinking_start": True}
-            yield {"thinking_end": True}
-            yield f"reply:{echo}"
-            yield {"prompt_tokens": 3, "completion_tokens": 1}
+    def fake_stream_remote_job(kind, params, publish, *, client_ref=None):
+        if kind == "chat":
+            echo = params["messages"][-1]["content"]
+            publish({"type": "thinking_start"})
+            publish({"type": "thinking_end"})
+            publish({"type": "content", "text": f"reply:{echo}"})
+            return {"text": f"reply:{echo}", "prompt_tokens": 3,
+                    "completion_tokens": 1, "reasoning_tokens": 0}
+        if kind == "image":
+            publish({"type": "progress", "stage": "diffusion", "step": 1, "total_steps": 9})
+            return {"url": "http://api.invalid/outputs/remote.png",
+                    "seed": 42, "width": 512, "height": 512}
+        raise AssertionError(f"unexpected job kind: {kind}")
 
-    import app.chat as chatmod
-    monkeypatch.setattr(chatmod, "get_client", lambda: FakeClient())
-    return FakeClient
-
-
-@pytest.fixture
-def stub_image(monkeypatch):
-    """Stub the image backend; each save gets a unique local filename so a
-    misrouted result would be detectable."""
-    import app.jobs.handlers.media as media
-    import app.chat.images as images
-
-    class FakeResp:
-        status_code = 200
-        text = ""
-        def iter_lines(self, decode_unicode=False):
-            yield 'data: {"stage": "diffusion", "step": 1, "total_steps": 9}'
-            yield ('data: {"stage": "done", "filename": "remote.png", '
-                   '"seed": 42, "width": 512, "height": 512}')
-
-    class FakeRequests:
-        def post(self, url, **kw):
-            assert "/generate-stream" in url
-            return FakeResp()
-
-    monkeypatch.setattr(media, "requests", FakeRequests())
-    monkeypatch.setattr(images, "_get_image_url", lambda: "http://stub")
     counter = itertools.count()
+    monkeypatch.setattr(chatmod, "get_client", lambda: FakeClient())
     monkeypatch.setattr(images, "_save_remote_image",
                         lambda url: (f"local_{next(counter)}.png", "/x"))
+    monkeypatch.setattr(api_client, "stream_remote_job", fake_stream_remote_job)
 
 
 def _thread(db, user, title="T"):
@@ -105,7 +93,7 @@ def _drain_premium_first(fake_redis, wid):
 # --- the core anti-"switch" test ------------------------------------------
 
 def test_multi_user_multi_kind_no_crosstalk(app, db, make_user, fake_redis,
-                                            stub_llm, stub_image):
+                                            stub_remote):
     """Two users each submit a chat and an image job, interleaved. After the
     worker drains the queue, every artifact must belong to the submitting user
     and thread, keyed by its own job_id."""
@@ -188,7 +176,7 @@ def test_multi_user_multi_kind_no_crosstalk(app, db, make_user, fake_redis,
         assert b_text == "reply:bob-says-yo"
 
 
-def test_premium_served_before_free(app, db, make_user, fake_redis, stub_llm):
+def test_premium_served_before_free(app, db, make_user, fake_redis, stub_remote):
     """A premium job enqueued after free jobs is claimed first."""
     from app.jobs import enqueue
 

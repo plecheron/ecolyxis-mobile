@@ -1,6 +1,6 @@
 """Media job handlers: image / upscale / edit / video, with Redis faked and the
-GPU backends stubbed. Verifies persistence (idempotent, keyed by job_id),
-progress + done events, and the submit endpoints."""
+remote ecolyxis-api stubbed at the stream_remote_job seam. Verifies persistence
+(idempotent, keyed by job_id), progress + done events, and the submit endpoints."""
 import io
 import json
 import uuid
@@ -56,6 +56,18 @@ class FakeRequests:
         return self._match(url)
 
 
+def _stub_remote(monkeypatch, events, result):
+    """Stub ecolyxis-api: publish the given events, then return the result dict."""
+    import app.jobs.api_client as api_client
+
+    def fake_stream_remote_job(kind, params, publish, *, client_ref=None):
+        for ev in events:
+            publish(ev)
+        return dict(result)
+
+    monkeypatch.setattr(api_client, "stream_remote_job", fake_stream_remote_job)
+
+
 def _thread(db, user):
     t = Thread(id=str(uuid.uuid4()), user_id=user.id, title="Test")
     db.session.add(t)
@@ -74,7 +86,6 @@ def _make_job(db, user, thread, kind, params):
 # --- image ----------------------------------------------------------------
 
 def test_run_image_persists(app, db, make_user, fake_redis, monkeypatch):
-    import app.jobs.handlers.media as media
     import app.chat.images as images
     from app.jobs.worker import run_job
     from app.jobs import read_events
@@ -84,12 +95,10 @@ def test_run_image_persists(app, db, make_user, fake_redis, monkeypatch):
     job = _make_job(db, user, thread, "image", {"prompt": "a cat", "width": 512, "height": 512})
     job_id, tid = job.id, thread.id
 
-    monkeypatch.setattr(media, "requests", FakeRequests([
-        ("/generate-stream", FakeResp(lines=[
-            'data: {"stage": "diffusion", "step": 1, "total_steps": 9}',
-            'data: {"stage": "done", "filename": "remote.png", "seed": 123, "width": 512, "height": 512}',
-        ])),
-    ]))
+    _stub_remote(monkeypatch,
+                 events=[{"type": "progress", "stage": "diffusion", "step": 1, "total_steps": 9}],
+                 result={"url": "http://api.invalid/outputs/remote.png",
+                         "seed": 123, "width": 512, "height": 512})
     monkeypatch.setattr(images, "_save_remote_image", lambda url: ("local_cat.png", "/x"))
 
     run_job(app, "w-img", job_id)
@@ -107,7 +116,6 @@ def test_run_image_persists(app, db, make_user, fake_redis, monkeypatch):
 
 
 def test_image_idempotent(app, db, make_user, fake_redis, monkeypatch):
-    import app.jobs.handlers.media as media
     import app.chat.images as images
     from app.jobs.worker import run_job
 
@@ -116,10 +124,10 @@ def test_image_idempotent(app, db, make_user, fake_redis, monkeypatch):
     job = _make_job(db, user, thread, "image", {"prompt": "x", "width": 512, "height": 512})
     job_id, tid = job.id, thread.id
 
-    monkeypatch.setattr(media, "requests", FakeRequests([
-        ("/generate-stream", FakeResp(lines=[
-            'data: {"stage": "done", "filename": "r.png", "seed": 1, "width": 512, "height": 512}'])),
-    ]))
+    _stub_remote(monkeypatch,
+                 events=[],
+                 result={"url": "http://api.invalid/outputs/r.png",
+                         "seed": 1, "width": 512, "height": 512})
     monkeypatch.setattr(images, "_save_remote_image", lambda url: ("once.png", "/x"))
 
     run_job(app, "w1", job_id)
@@ -133,7 +141,6 @@ def test_image_idempotent(app, db, make_user, fake_redis, monkeypatch):
 # --- edit -----------------------------------------------------------------
 
 def test_run_edit_persists(app, db, make_user, fake_redis, monkeypatch):
-    import app.jobs.handlers.media as media
     import app.chat.images as images
     from app.jobs.worker import run_job
 
@@ -143,17 +150,16 @@ def test_run_edit_persists(app, db, make_user, fake_redis, monkeypatch):
                     {"prompt": "make it blue", "image": "data:...", "size": 512})
     job_id, tid = job.id, thread.id
 
-    monkeypatch.setattr(media, "requests", FakeRequests([
-        ("/edit-json", FakeResp(json_data={"url": "/outputs/edited.png", "elapsed_seconds": 3},
-                                headers={"content-type": "application/json"})),
-    ]))
+    _stub_remote(monkeypatch,
+                 events=[],
+                 result={"url": "http://api.invalid/outputs/edited.png", "seed": 9})
     monkeypatch.setattr(images, "_save_remote_image", lambda url: ("local_edit.png", "/x"))
 
     run_job(app, "w-edit", job_id)
 
     with app.app_context():
         img = GeneratedImage.query.filter_by(job_id=job_id).one()
-        assert img.filename == "local_edit.png" and img.prompt.startswith("[edit]")
+        assert img.filename == "local_edit.png" and img.prompt == "make it blue"
         assert Message.query.filter_by(job_id=job_id).count() == 1
         assert db.session.get(GenerationJob, job_id).status == "done"
 
@@ -173,10 +179,12 @@ def test_run_video_persists(app, db, make_user, fake_redis, monkeypatch, tmp_pat
     job = _make_job(db, user, thread, "video", {"prompt": "a wave", "width": 480, "height": 480, "frames": 33})
     job_id, tid = job.id, thread.id
 
+    _stub_remote(monkeypatch,
+                 events=[{"type": "progress", "stage": "sampling", "step": 2}],
+                 result={"url": "http://api.invalid/outputs/remote.mp4",
+                         "seed": 7, "fps": 16, "elapsed_s": 12})
+    # _fetch_artifact downloads the finished .mp4 with media.requests
     monkeypatch.setattr(media, "requests", FakeRequests([
-        ("/generate-stream", FakeResp(lines=[
-            'data: {"stage": "sampling", "step": 2}',
-            'data: {"stage": "done", "filename": "remote.mp4", "seed": 7, "fps": 16, "elapsed_s": 12}'])),
         ("/outputs/", FakeResp(content=b"MP4BYTES", status=200)),
     ]))
 

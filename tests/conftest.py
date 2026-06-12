@@ -20,6 +20,11 @@ os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_test_dummy"
 os.environ["LLM_BASE_URL"] = "http://test-llm.invalid/v1"
 os.environ["HIDREAM_URL"] = "http://test-hidream.invalid"
 os.environ["WAN22_URL"] = "http://test-wan22.invalid"
+# The central GPU job queue (ecolyxis-api). MUST be non-routable: config.py
+# loads the production .env into os.environ, and any test that slips past its
+# mocks would otherwise submit real jobs to the production GPU queue.
+os.environ["ECOLYXIS_API_URL"] = "http://test-ecolyxis-api.invalid/api/v1"
+os.environ["ECOLYXIS_INTERNAL_TOKEN"] = "test-internal-token"
 
 # Put project root on path so `from app import create_app` works.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

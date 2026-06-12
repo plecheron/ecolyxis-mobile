@@ -31,8 +31,10 @@ def test_stream_chat_throttles_thinking_progress(monkeypatch):
     lines.append(_sse({"usage": {"prompt_tokens": 3, "completion_tokens": 1}}))
     lines.append(b"data: [DONE]")
 
-    # Disable the time-based emit so only the every-16-tokens rule fires (deterministic).
+    # Disable the time-based emit and pin the token cadence so only the
+    # every-16-tokens rule fires (deterministic, immune to prod tuning).
     monkeypatch.setattr(llmmod, "_THINK_EMIT_EVERY_SECONDS", 9999)
+    monkeypatch.setattr(llmmod, "_THINK_EMIT_EVERY_TOKENS", 16)
     monkeypatch.setattr(llmmod.requests, "post", lambda *a, **k: FakeResp(lines))
 
     client = LLMClient("http://x", "m", "sys")

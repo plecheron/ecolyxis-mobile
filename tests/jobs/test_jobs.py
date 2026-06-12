@@ -20,22 +20,29 @@ def fake_redis():
     rc._client = prev
 
 
+class FakeClient:
+    """Minimal LLM client: run_chat only needs build_messages on the remote path."""
+    def build_messages(self, thread, mode="standard", workspace_context=None):
+        return [{"role": "user", "content": "hi"}]
+
+
 @pytest.fixture
 def stub_llm(monkeypatch):
-    """Replace the LLM client with a deterministic token stream."""
-    class FakeClient:
-        def build_messages(self, thread, mode="standard"):
-            return [{"role": "user", "content": "hi"}]
-
-        def stream_chat(self, msgs, mode="standard"):
-            yield {"thinking_start": True}
-            yield {"thinking_end": True}
-            for tok in ["Hello", ", ", "world", "!"]:
-                yield tok
-            yield {"prompt_tokens": 7, "completion_tokens": 4}
-
+    """Stub the remote ecolyxis-api chat stream with a deterministic token stream."""
     import app.chat as chatmod
+    import app.jobs.api_client as api_client
+
+    def fake_stream_remote_job(kind, params, publish, *, client_ref=None):
+        assert kind == "chat"
+        publish({"type": "thinking_start"})
+        publish({"type": "thinking_end"})
+        for tok in ["Hello", ", ", "world", "!"]:
+            publish({"type": "content", "text": tok})
+        return {"text": "Hello, world!", "prompt_tokens": 7,
+                "completion_tokens": 4, "reasoning_tokens": 0}
+
     monkeypatch.setattr(chatmod, "get_client", lambda: FakeClient())
+    monkeypatch.setattr(api_client, "stream_remote_job", fake_stream_remote_job)
     return FakeClient
 
 
@@ -123,20 +130,20 @@ def test_thinking_progress_emitted_and_persisted(app, db, make_user, fake_redis,
     from app.jobs.worker import run_job
     from app.jobs import read_events
 
-    class ThinkingClient:
-        def build_messages(self, thread, mode="standard"):
-            return [{"role": "user", "content": "hi"}]
-
-        def stream_chat(self, msgs, mode="standard"):
-            yield {"thinking_start": True}
-            yield {"thinking_progress": 12}
-            yield {"thinking_progress": 31}
-            yield {"thinking_end": True, "tokens": 42}
-            yield "Answer"
-            yield {"prompt_tokens": 9, "completion_tokens": 1}
-
     import app.chat as chatmod
-    monkeypatch.setattr(chatmod, "get_client", lambda: ThinkingClient())
+    import app.jobs.api_client as api_client
+
+    def thinking_stream(kind, params, publish, *, client_ref=None):
+        publish({"type": "thinking_start"})
+        publish({"type": "thinking_progress", "tokens": 12})
+        publish({"type": "thinking_progress", "tokens": 31})
+        publish({"type": "thinking_end", "tokens": 42})
+        publish({"type": "content", "text": "Answer"})
+        return {"text": "Answer", "prompt_tokens": 9,
+                "completion_tokens": 1, "reasoning_tokens": 42}
+
+    monkeypatch.setattr(chatmod, "get_client", lambda: FakeClient())
+    monkeypatch.setattr(api_client, "stream_remote_job", thinking_stream)
 
     user = make_user()
     thread = _thread(db, user)
