@@ -53,28 +53,38 @@ def get_workspace_context(thread, max_tokens=WORKSPACE_CONTEXT_BUDGET):
         if sib.summary:
             summary_text = sib.summary
         else:
-            # Fallback: first user message preview + assistant response
+            # Fallback: build a Q&A pair from the first user message and
+            # first assistant response.  This gives the LLM the actual
+            # content of the conversation, not just a truncated title.
+            PER_THREAD_LIMIT = 2000  # chars (~500 tokens)
+
             first_msg = (
                 Message.query
                 .filter_by(thread_id=sib.id, role="user")
                 .order_by(Message.created_at)
                 .first()
             )
-            if first_msg and first_msg.content:
-                preview = Thread._extract_text(first_msg.content)[:200]
-                summary_text = f"{preview}"
+            first_reply = (
+                Message.query
+                .filter_by(thread_id=sib.id, role="assistant")
+                .order_by(Message.created_at)
+                .first()
+            )
 
-            # If no user message (e.g. it was deleted), fall back to the
-            # first assistant response which often contains the useful content.
-            if not summary_text:
-                first_reply = (
-                    Message.query
-                    .filter_by(thread_id=sib.id, role="assistant")
-                    .order_by(Message.created_at)
-                    .first()
-                )
-                if first_reply and first_reply.content:
-                    summary_text = Thread._extract_text(first_reply.content)[:300]
+            parts = []
+            remaining = PER_THREAD_LIMIT
+
+            if first_msg and first_msg.content:
+                user_text = Thread._extract_text(first_msg.content)
+                parts.append(f"Q: {user_text[:remaining]}")
+                remaining -= len(user_text[:remaining])
+
+            if first_reply and first_reply.content and remaining > 0:
+                reply_text = Thread._extract_text(first_reply.content)
+                parts.append(f"A: {reply_text[:remaining]}")
+
+            if parts:
+                summary_text = "\n".join(parts)
 
             # Last resort: use the title
             if not summary_text and sib.title and sib.title != "New Chat":
