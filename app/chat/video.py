@@ -18,6 +18,12 @@ def generate_video_stream(thread_id):
     """SSE proxy: stream video generation progress from Wan2.2 server."""
     Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
 
+    if not current_user.is_admin:
+        err = json.dumps({"error": "forbidden", "message": "Video generation is available for admin users only."})
+        def _admin_err():
+            yield "data: " + err + "\n\n"
+        return Response(_admin_err(), mimetype="text/event-stream")
+
     allowed, _, limit = check_rate_limit()
     if not allowed:
         err = json.dumps({"error": "rate_limited", "message": f"Free tier limit reached ({limit} messages per hour)."})
@@ -111,6 +117,12 @@ def generate_video_stream(thread_id):
 def animate_image(thread_id):
     """SSE proxy: animate an existing image using Wan2.2 I2V."""
     Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+
+    if not current_user.is_admin:
+        err = json.dumps({"error": "forbidden", "message": "Video generation is available for admin users only."})
+        def _admin_err():
+            yield "data: " + err + "\n\n"
+        return Response(_admin_err(), mimetype="text/event-stream")
 
     allowed, _, _ = check_rate_limit()
     if not allowed:

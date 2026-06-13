@@ -105,7 +105,7 @@ def check():
         from app.redis_client import get_redis
         r = get_redis()
         # Check for active worker heartbeats
-        alive_keys = list(r.scan_iter("worker:alive:*"))
+        alive_keys = list(r.scan_iter("worker:*:alive"))
         worker_count = 0
         for key in alive_keys:
             ttl = r.ttl(key)
