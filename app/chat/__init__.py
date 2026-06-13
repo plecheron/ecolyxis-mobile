@@ -5,7 +5,7 @@ import os
 import base64
 import uuid
 import requests as req_lib
-from flask import Blueprint, render_template, request, Response, current_app
+from flask import Blueprint, render_template, request, current_app
 from flask_login import login_required, current_user
 from app import db
 from app.models import Thread, Message, GeneratedImage, GeneratedVideo
@@ -161,14 +161,6 @@ def _run_precise(client, msgs, mode):
     total_completion_tokens += ct
 
     return final, total_prompt_tokens, total_completion_tokens
-
-def _sse(generator):
-    """Wrap a generator in a streaming SSE Response."""
-    return Response(generator, mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
-
 
 def _save_remote_image(remote_url):
     """Fetch an image from the remote server and save it locally.
