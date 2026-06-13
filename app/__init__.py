@@ -68,6 +68,9 @@ def create_app(test_config=None):
     from app.jobs.routes import jobs_bp
     from app.workspace import workspace_bp
     from app.admin import admin_bp
+    from app.sharing import share_bp
+    from app.analytics import analytics_bp
+    from app.models_selector import models_selector_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dash_bp)
@@ -84,6 +87,9 @@ def create_app(test_config=None):
     app.register_blueprint(jobs_bp)
     app.register_blueprint(workspace_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(share_bp)
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(models_selector_bp)
 
     # CSRF protection for all non-API POST routes
     from app.csrf import generate_csrf_token, validate_csrf_token

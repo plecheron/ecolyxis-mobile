@@ -1,5 +1,37 @@
 {% extends "base.html" %}
-{% block title %}{{ thread.title }} — Ecolyxis{% endblock %}
+{% block title %}{{ thread.title }} — Ecolyxis
+    async function shareThread() {
+        try {
+            const resp = await fetch('/share/create/' + threadId, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]').content }
+            });
+            if (!resp.ok) throw new Error('Failed to create share link');
+            const data = await resp.json();
+            const shareUrl = data.url;
+
+            // Try Web Share API first (mobile), fallback to clipboard
+            if (navigator.share) {
+                await navigator.share({ title: 'Shared Conversation', url: shareUrl });
+            } else {
+                await navigator.clipboard.writeText(shareUrl);
+                showToast('Share link copied to clipboard!');
+            }
+        } catch (e) {
+            showToast('Failed to create share link: ' + e.message);
+        }
+    }
+
+    function showToast(msg) {
+        const toast = document.createElement('div');
+        toast.className = 'flash flash-success';
+        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+    
+{% endblock %}
 {% block body %}
 <div class="app-layout">
     <aside class="sidebar" id="sidebar">

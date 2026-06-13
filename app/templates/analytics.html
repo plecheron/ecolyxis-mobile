@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Usage Analytics — Ecolyxis{% endblock %}
+
+{% block head %}
+<style>
+.analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.stat-card { background: var(--bg-card, #1a1a2e); border-radius: 12px; padding: 1.25rem; text-align: center; }
+.stat-card .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--accent, #2ecc71); }
+.stat-card .stat-label { font-size: 0.85rem; color: var(--text-muted, #888); margin-top: 0.25rem; }
+.chart-container { background: var(--bg-card, #1a1a2e); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
+.chart-container canvas { max-height: 300px; }
+.usage-section { margin: 2rem 0; }
+.usage-section h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+.job-breakdown { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.job-badge { background: var(--accent, #2ecc71); color: #fff; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="container" style="max-width: 900px; margin: 0 auto; padding: 2rem 1rem;">
+    <h1 style="margin-bottom: 0.5rem;">📊 Usage Analytics</h1>
+    <p style="color: var(--text-muted, #888); margin-bottom: 1.5rem;">Last 30 days of activity</p>
+
+    <div class="analytics-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:,}".format(total_messages) }}</div>
+            <div class="stat-label">Total Messages</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ "{:,}".format(total_tokens) }}</div>
+            <div class="stat-label">Tokens Used</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ total_threads }}</div>
+            <div class="stat-label">Conversations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">£{{ "%.2f"|format(balance_pence / 100) }}</div>
+            <div class="stat-label">Credit Balance</div>
+        </div>
+        {% if total_jobs > 0 %}
+        <div class="stat-card">
+            <div class="stat-value">{{ total_jobs }}</div>
+            <div class="stat-label">Generation Jobs</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="chart-container">
+        <h2 style="margin-bottom: 1rem;">Daily Token Usage</h2>
+        <canvas id="tokenChart"></canvas>
+    </div>
+
+    {% if job_by_kind %}
+    <div class="usage-section">
+        <h2>Generation Jobs by Type</h2>
+        <div class="job-breakdown">
+            {% for kind, count in job_by_kind.items() %}
+            <span class="job-badge">{{ kind }}: {{ count }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const dailyData = {{ daily_data | tojson }};
+const ctx = document.getElementById('tokenChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: dailyData.map(d => d.date.slice(5)),
+        datasets: [{
+            label: 'Tokens',
+            data: dailyData.map(d => d.tokens),
+            borderColor: '#2ecc71',
+            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+            fill: true,
+            tension: 0.3,
+        }],
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: { beginAtZero: true, ticks: { callback: v => v >= 1000 ? (v/1000)+'k' : v } },
+        },
+        plugins: { legend: { display: false } },
+    },
+});
+</script>
+{% endblock %}

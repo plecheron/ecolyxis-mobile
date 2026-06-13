@@ -394,3 +394,23 @@ class RateLimitBucket(db.Model):
             bucket.last_refill = now
             db.session.commit()
             return False, 0, retry_after
+
+
+class SharedLink(db.Model):
+    """Public read-only link to a conversation thread."""
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    view_count = db.Column(db.Integer, default=0, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=True)  # NULL = never expires
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    thread = db.relationship("Thread", backref=db.backref("shared_links", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship("User", backref=db.backref("shared_links", lazy=True, cascade="all, delete-orphan"))
+
+    def is_expired(self):
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) > self.expires_at.replace(tzinfo=timezone.utc)
+
