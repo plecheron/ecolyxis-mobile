@@ -135,10 +135,27 @@ def edit_message(thread_id, message_id):
     workspace_context = get_workspace_context(thread)
     msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
 
-    return _sse(_stream_llm(
-        client, msgs, mode, current_user.id, current_user.is_premium,
-        current_app._get_current_object()
-    ))
+    def _stream_edit():
+        full_response = ""
+        try:
+            for chunk in client.stream_chat(msgs, mode=mode):
+                if isinstance(chunk, dict):
+                    if "thinking_start" in chunk:
+                        yield f"data: {json.dumps({'thinking_start': True})}\n\n"
+                    elif "thinking_progress" in chunk:
+                        pass
+                    elif "thinking_end" in chunk:
+                        yield f"data: {json.dumps({'thinking_end': True})}\n\n"
+                else:
+                    full_response += chunk
+                    yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+
+            yield f"data: {json.dumps({'done': True, 'full_response': full_response}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(_stream_edit(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 @chat_bp.route("/chat/<string:thread_id>/message/<int:message_id>", methods=["DELETE"])
 @login_required
 def delete_message(thread_id, message_id):
