@@ -154,7 +154,9 @@
                 <optgroup label="🎨 Media">
                     <option value="image"{{ ' selected' if _sel == 'image' }}>🖼️ Image Generation</option>
                     <option value="edit"{{ ' selected' if _sel == 'edit' }}>✏️ Image Editing</option>
+                    <!-- Video generation disabled — Wan2.2 backend non-functional
                     <option value="video"{{ ' selected' if _sel == 'video' }}>🎬 Video Generation</option>
+                    -->
                     {% if rate_info.is_premium %}<option value="vision"{{ ' selected' if _sel == 'vision' }}>👁️ Vision — Image understanding</option>{% endif %}
                 </optgroup>
             </select>
