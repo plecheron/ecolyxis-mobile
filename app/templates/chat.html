@@ -503,7 +503,7 @@ function escapeHtml(text) {
 }
 
 function renderMd(text) {
-    try { return marked.parse(text); }
+    try { return DOMPurify.sanitize(marked.parse(text)); }
     catch { return escapeHtml(text); }
 }
 
