@@ -130,7 +130,7 @@ def get_workspace(workspace_id):
             'title': t.title,
             'summary': t.summary,
             'updated_at': t.updated_at.isoformat() if t.updated_at else None,
-            'message_count': t.messages.count(),
+            'message_count': Message.query.filter_by(thread_id=t.id).count(),
         } for t in threads],
     })
 
@@ -179,7 +179,7 @@ def list_workspace_threads(workspace_id):
         'title': t.title,
         'summary': t.summary,
         'updated_at': t.updated_at.isoformat() if t.updated_at else None,
-        'message_count': t.messages.count(),
+        'message_count': Message.query.filter_by(thread_id=t.id).count(),
     } for t in threads])
 
 

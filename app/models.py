@@ -86,9 +86,9 @@ class Thread(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     messages = db.relationship("Message", backref="thread", lazy=True, cascade="all, delete-orphan")
-    generated_images = db.relationship("GeneratedImage", backref=db.backref("thread_cascade", lazy=True), lazy=True, cascade="all, delete-orphan", foreign_keys="GeneratedImage.thread_id")
-    generated_videos = db.relationship("GeneratedVideo", backref=db.backref("thread_cascade", lazy=True), lazy=True, cascade="all, delete-orphan", foreign_keys="GeneratedVideo.thread_id")
-    generation_jobs = db.relationship("GenerationJob", backref=db.backref("thread_cascade", lazy=True), lazy=True, cascade="all, delete-orphan", foreign_keys="GenerationJob.thread_id")
+    generated_images = db.relationship("GeneratedImage", lazy=True, cascade="all, delete-orphan")
+    generated_videos = db.relationship("GeneratedVideo", lazy=True, cascade="all, delete-orphan")
+    generation_jobs = db.relationship("GenerationJob", lazy=True, cascade="all, delete-orphan")
 
     @staticmethod
     def _extract_text(content):

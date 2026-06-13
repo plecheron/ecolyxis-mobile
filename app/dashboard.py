@@ -231,11 +231,16 @@ def bulk_delete_threads():
     if not thread_ids:
         return jsonify({"error": "No thread IDs provided"}), 400
 
-    # Only delete threads belonging to the current user
-    deleted = Thread.query.filter(
+    # Only delete threads belonging to the current user.
+    # Use ORM delete (not bulk Query.delete) so cascade relationships fire
+    # and clean up GeneratedImage / GeneratedVideo / GenerationJob rows.
+    threads = Thread.query.filter(
         Thread.id.in_(thread_ids),
         Thread.user_id == current_user.id
-    ).delete(synchronize_session="fetch")
+    ).all()
+    count = len(threads)
+    for t in threads:
+        db.session.delete(t)
     db.session.commit()
 
-    return jsonify({"deleted": deleted})
+    return jsonify({"deleted": count})
