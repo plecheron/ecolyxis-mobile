@@ -411,14 +411,14 @@ def compact_save(thread_id):
             db.session.delete(m)
         db.session.flush()
         user_summary = Message(
-    
+            thread_id=thread.id,
             role="user",
             content=f"\U0001f4dd **Earlier conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary:",
             created_at=oldest_time
         )
         db.session.add(user_summary)
         assistant_summary = Message(
-    
+            thread_id=thread.id,
             role="assistant",
             content=content,
             tokens_used=tokens,
@@ -428,13 +428,13 @@ def compact_save(thread_id):
     else:
         Message.query.filter_by(thread_id=thread.id).delete()
         user_summary = Message(
-    
+            thread_id=thread.id,
             role="user",
             content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:"
         )
         db.session.add(user_summary)
         assistant_summary = Message(
-    
+            thread_id=thread.id,
             role="assistant",
             content=content,
             tokens_used=tokens
