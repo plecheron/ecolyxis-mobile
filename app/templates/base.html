@@ -10,6 +10,8 @@
     <meta name="apple-mobile-web-app-title" content="Ecolyxis">
     <meta name="description" content="Sustainable AI chatbot powered by green energy.">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/icon-192.png') }}">
     <title>{% block title %}Ecolyxis{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/billing.css') }}">
@@ -38,9 +40,30 @@
         setTimeout(() => el.remove(), 4000);
     });
     // Register service worker for PWA
+    // PWA: service worker + install prompt
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/static/sw.js').catch(() => {});
     }
+    // Capture install prompt for custom button
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Show install button if available
+        const btn = document.getElementById('pwa-install-btn');
+        if (btn) btn.style.display = 'inline-flex';
+    });
+    window.addEventListener('appinstalled', () => {
+        deferredPrompt = null;
+        const btn = document.getElementById('pwa-install-btn');
+        if (btn) btn.style.display = 'none';
+    });
+    window.pwaInstall = function() {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
+        }
+    };
     </script>
     {% block scripts %}{% endblock %}
 </body>
