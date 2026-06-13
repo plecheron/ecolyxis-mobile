@@ -34,3 +34,17 @@ with a `-beta` suffix during the beta phase.
 
 Initial beta release with chat modes, workspaces, image/video/edit generation,
 wallet + Stripe, public API, TTS, PWA, export, passkeys, search, admin panel.
+
+## [0.3.0-beta] - 2026-06-13
+
+### Infrastructure
+- **#100** Monitoring & alerting: systemd timer checks health, Redis, queue depth, worker count every 60s
+- **#101** Redis HA: web2 now replicates web1 (live replica), manual failover script installed
+- **#102** Shared uploads: NFS mount web1→web2, orphan pruning script (weekly cron, found 67 orphans/61MB)
+- **#103** PostgreSQL backups: daily 3am cron on db1, 7-day retention + 4 weekly snapshots
+- **#104** Log rotation: logrotate on both servers (14-day app, 6-month backup), journald capped 100M
+
+### Quality
+- **#106** Test coverage: +19 tests (wallet routes: 7, chat routes: 12). Suite now 181 tests passing
+- **#107** CI pipeline: multi-version Python (3.13+3.14), strict ruff, pip-audit, coverage reporting with 40% floor
+- **#108** Nightly benchmark: automated LLM latency/throughput benchmark, results logged to JSONL
