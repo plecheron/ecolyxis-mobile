@@ -1,4 +1,22 @@
 # Changelog
+## v0.5.0-beta (2026-06-13)
+
+### Tier 1 — DB Hardening
+- Physical replication slot `db2_standby` on db1 (WAL retention)
+- Synchronous replication enabled (zero data loss, sync_state=sync)
+
+### Tier 2 — Coverage → 82%
+- Admin module tests: 0% → 80% (33 new tests)
+- Health, WebAuthn, Worker, API routes gap-closing tests (+37 tests)
+- Total: 533 tests, 82% coverage (was 444 tests, 72%)
+
+### Tier 3 — New Features
+- **Conversation sharing**: public read-only links at /s/<id> with create/revoke UI
+- **Usage analytics dashboard**: 30-day token chart, message/job/wallet stats at /analytics
+- **Multi-model selector**: GET /api/models with 5 tiers (standard/quick/long/precise/vision)
+- API key management UI (pre-existing, confirmed working)
+
+
 
 All notable changes to Ecolyxis will be documented in this file.
 
