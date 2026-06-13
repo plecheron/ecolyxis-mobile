@@ -113,7 +113,12 @@ def create_app(test_config=None):
             from flask import session as _sess
             # Generate a fresh token so the next request can succeed
             generate_csrf_token()
-            if request.is_json or request.headers.get("Accept", "").startswith("application/json"):
+            # AJAX/fetch requests (DELETE, PUT, PATCH, JSON): return 403, don't redirect.
+            # A 303 redirect on DELETE silently fails because the browser follows
+            # it as GET and hits a 405, making the error opaque to the JS caller.
+            if (request.method in ("DELETE", "PUT", "PATCH")
+                    or request.is_json
+                    or request.headers.get("Accept", "").startswith("application/json")):
                 return jsonify({"error": "CSRF token validation failed"}), 403
             # For form submissions, redirect with flash so user gets fresh token
             from flask import flash as _flash

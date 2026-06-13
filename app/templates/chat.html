@@ -754,8 +754,13 @@ async function deleteMessage(msgId, btn) {
     var div = btn.closest('.message');
     if (msgId) {
         try {
-            var resp = await fetch('/chat/' + threadId + '/message/' + msgId, { method: 'DELETE' });
-            if (!resp.ok && resp.status !== 204) { alert('Could not delete message.'); return; }
+            var csrfTok = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var resp = await fetch('/chat/' + threadId + '/message/' + msgId, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': csrfTok }
+            });
+            if (resp.status === 403) { alert('Your session expired. Please reload the page and try again.'); return; }
+            if (!resp.ok && resp.status !== 204) { alert('Could not delete message (HTTP ' + resp.status + ').'); return; }
         } catch (e) { alert('Could not delete message.'); return; }
     }
     if (div) div.remove();

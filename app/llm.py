@@ -53,7 +53,7 @@ def get_workspace_context(thread, max_tokens=WORKSPACE_CONTEXT_BUDGET):
         if sib.summary:
             summary_text = sib.summary
         else:
-            # Fallback: title + first user message preview
+            # Fallback: first user message preview + assistant response
             first_msg = (
                 Message.query
                 .filter_by(thread_id=sib.id, role="user")
@@ -63,7 +63,20 @@ def get_workspace_context(thread, max_tokens=WORKSPACE_CONTEXT_BUDGET):
             if first_msg and first_msg.content:
                 preview = Thread._extract_text(first_msg.content)[:200]
                 summary_text = f"{preview}"
-            # If we have at least a title, use it
+
+            # If no user message (e.g. it was deleted), fall back to the
+            # first assistant response which often contains the useful content.
+            if not summary_text:
+                first_reply = (
+                    Message.query
+                    .filter_by(thread_id=sib.id, role="assistant")
+                    .order_by(Message.created_at)
+                    .first()
+                )
+                if first_reply and first_reply.content:
+                    summary_text = Thread._extract_text(first_reply.content)[:300]
+
+            # Last resort: use the title
             if not summary_text and sib.title and sib.title != "New Chat":
                 summary_text = sib.title
 
