@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with a `-beta` suffix during the beta phase.
 
+## [0.4.0-beta] - 2026-06-13
+
+### Testing
+- **Test coverage raised from 49% to 72%** (181 → 444 tests).
+- New test suites for chat routes, LLM client, dashboard, TTS, export,
+  summaries, billing, Redis client, jobs API client, jobs routes, worker,
+  workspace routes, video routes, blog, and WebAuthn.
+- **Bug fix**: `compact_save` route was missing `thread_id` on Message
+  creation — would crash on every full conversation compact.
+
+### PWA
+- **Offline support**: Service worker v11 with offline fallback page,
+  stale-while-revalidate caching for static assets, network-first for
+  navigation requests.
+- **Installable**: Maskable icons, `display_override`, `beforeinstallprompt`
+  capture for custom install button. Apple-touch-icon and favicon added.
+- Manifest updated with `scope`, `id`, and `display_override`.
+
+### Mobile UX
+- **Pull-to-refresh disabled** via `overscroll-behavior-y: contain`.
+- **iOS auto-zoom fixed**: All input/textarea font-sizes set to ≥1rem (16px).
+- **Smooth scrolling**: `touch-action: pan-y` on chat messages during streaming.
+- **Sidebar drawer animation**: CSS transition on transform for mobile slide-in.
+
+### Infrastructure
+- All 7 stale GitHub issues (#100–#108) closed with commit references.
+- Video generation UI disabled (Wan2.2 backend non-functional).
+- WebAuthn passkeys confirmed functional (webauthn 2.7.1).
+
 ## [0.2.0-beta] - 2026-06-13
 
 ### Security
