@@ -10,3 +10,4 @@ uploads/
 *.sqlite
 config.real.py
 config.py.real
+.coverage

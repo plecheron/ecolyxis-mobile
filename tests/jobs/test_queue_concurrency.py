@@ -32,7 +32,7 @@ def stub_remote(monkeypatch):
     thread — a switch would show the wrong text. Each image save gets a unique
     local filename so a misrouted result would be detectable."""
     import app.chat as chatmod
-    import app.chat.images as images
+    import app.chat as images
     import app.jobs.api_client as api_client
 
     class FakeClient:

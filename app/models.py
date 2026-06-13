@@ -248,21 +248,6 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
-class LLMQueueEntry(db.Model):
-    """Priority queue for LLM requests."""
-    __tablename__ = "llm_queue"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, nullable=False)
-    is_premium = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.Float, nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="waiting")
-
-    __table_args__ = (
-        db.Index("idx_queue_status", "status", "is_premium", "created_at"),
-    )
-
-
 class GenerationJob(db.Model):
     """Durable record of an async generation job (chat/image/video/edit/upscale/tts).
 

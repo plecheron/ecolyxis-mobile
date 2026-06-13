@@ -182,8 +182,6 @@ def create_app(test_config=None):
             except (_json.JSONDecodeError, KeyError, TypeError):
                 return markupsafe.Markup.escape(text)
         app.jinja_env.filters["render_message"] = render_message
-        from app.queue import init_queue
-        init_queue()
 
         @app.errorhandler(404)
         def not_found(e):

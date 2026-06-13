@@ -19,12 +19,10 @@ from app.chat import (
     get_client,
     check_rate_limit,
     save_user_message,
-    _stream_llm,
-    _sse,
     _ensure_upload_dir,
     UPLOAD_FOLDER,
     ALLOWED_EXTENSIONS,
-    MAX_IMAGE_SIZE,
+    MAX_IMAGE_SIZE
 )
 
 
@@ -75,49 +73,8 @@ def view(thread_id):
         thread_system_prompt=thread.system_prompt,
         jobs_enabled=current_app.config.get("JOBS_ENABLED", False),
         workspaces=workspaces,
-        workspace_threads=workspace_threads,
+        workspace_threads=workspace_threads
     )
-
-
-@chat_bp.route("/chat/<string:thread_id>/message", methods=["POST"])
-@login_required
-def send_message(thread_id):
-    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-
-    allowed, used, limit = check_rate_limit()
-    if not allowed:
-        return Response(
-            "data: " + json.dumps({
-                "error": "rate_limited",
-                "message": f"Free tier limit reached ({limit} messages per hour). Upgrade to Premium for unlimited.",
-                "used": used,
-                "limit": limit,
-            }) + "\n\n",
-            mimetype="text/event-stream",
-        )
-
-    data = request.get_json()
-    content = data.get("content", "").strip() if data else ""
-    images = data.get("images", []) if data else []
-    mode = data.get("mode", "standard") if data else "standard"
-
-    if not content and not images:
-        return Response("data: " + json.dumps({"error": "Empty message"}) + "\n\n",
-                        mimetype="text/event-stream")
-
-    save_user_message(thread, content, images)
-
-    client = get_client()
-    workspace_context = get_workspace_context(thread)
-    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
-
-    return _sse(_stream_llm(
-        client, msgs, mode, current_user.id, current_user.is_premium,
-        current_app._get_current_object(), precise=(mode == "precise"),
-
-    ))
-
-
 @chat_bp.route("/chat/<string:thread_id>/save", methods=["POST"])
 @login_required
 def save_message(thread_id):
@@ -151,7 +108,7 @@ def edit_message(thread_id, message_id):
                 "used": used,
                 "limit": limit,
             }) + "\n\n",
-            mimetype="text/event-stream",
+            mimetype="text/event-stream"
         )
 
     msg = Message.query.filter_by(id=message_id, thread_id=thread.id, role="user").first_or_404()
@@ -182,92 +139,6 @@ def edit_message(thread_id, message_id):
         client, msgs, mode, current_user.id, current_user.is_premium,
         current_app._get_current_object()
     ))
-
-
-@chat_bp.route("/chat/<string:thread_id>/regenerate", methods=["POST"])
-@login_required
-def regenerate(thread_id):
-    """Delete the last assistant message and regenerate it."""
-    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    data = request.get_json(silent=True) or {}
-    mode = data.get("mode", "standard")
-
-    allowed, used, limit = check_rate_limit()
-    if not allowed:
-        return Response(
-            "data: " + json.dumps({
-                "error": "rate_limited",
-                "message": f"Free tier limit reached ({limit} messages per hour). Upgrade to Premium for unlimited.",
-                "used": used,
-                "limit": limit,
-            }) + "\n\n",
-            mimetype="text/event-stream",
-        )
-
-    last_assistant = (
-        Message.query.filter_by(thread_id=thread.id, role="assistant")
-        .order_by(Message.created_at.desc())
-        .first()
-    )
-    if last_assistant:
-        db.session.delete(last_assistant)
-        db.session.commit()
-
-    client = get_client()
-    workspace_context = get_workspace_context(thread)
-    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
-
-    return _sse(_stream_llm(
-        client, msgs, mode, current_user.id, current_user.is_premium,
-        current_app._get_current_object()
-    ))
-
-
-@chat_bp.route("/chat/<string:thread_id>/regenerate/<int:message_id>", methods=["POST"])
-@login_required
-def regenerate_at(thread_id, message_id):
-    """Regenerate a specific assistant message: delete it and every message after
-    it, then re-stream a fresh response from the truncated context."""
-    thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
-    data = request.get_json(silent=True) or {}
-    mode = data.get("mode", "standard")
-
-    allowed, used, limit = check_rate_limit()
-    if not allowed:
-        return Response(
-            "data: " + json.dumps({
-                "error": "rate_limited",
-                "message": f"Free tier limit reached ({limit} messages per hour). Upgrade to Premium for unlimited.",
-                "used": used,
-                "limit": limit,
-            }) + "\n\n",
-            mimetype="text/event-stream",
-        )
-
-    target = Message.query.filter_by(
-        id=message_id, thread_id=thread.id, role="assistant"
-    ).first_or_404()
-
-    # Delete everything strictly after the target, then the target itself
-    # (mirrors the truncate-after pattern in edit_message, but avoids removing a
-    # preceding user message that happens to share the target's timestamp).
-    Message.query.filter(
-        Message.thread_id == thread.id,
-        Message.created_at > target.created_at,
-    ).delete(synchronize_session="fetch")
-    db.session.delete(target)
-    db.session.commit()
-
-    client = get_client()
-    workspace_context = get_workspace_context(thread)
-    msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
-
-    return _sse(_stream_llm(
-        client, msgs, mode, current_user.id, current_user.is_premium,
-        current_app._get_current_object()
-    ))
-
-
 @chat_bp.route("/chat/<string:thread_id>/message/<int:message_id>", methods=["DELETE"])
 @login_required
 def delete_message(thread_id, message_id):
@@ -295,7 +166,7 @@ def compact_thread(thread_id):
     if len(all_messages) < 2:
         return Response(
             "data: " + json.dumps({"error": "Nothing to compact — need at least 2 messages."}) + "\n\n",
-            mimetype="text/event-stream",
+            mimetype="text/event-stream"
         )
 
     allowed, used, limit = check_rate_limit()
@@ -305,7 +176,7 @@ def compact_thread(thread_id):
                 "error": "rate_limited",
                 "message": f"Free tier limit reached ({limit} messages per hour). Upgrade to Premium for unlimited.",
             }) + "\n\n",
-            mimetype="text/event-stream",
+            mimetype="text/event-stream"
         )
 
     conversation_text = ""
@@ -336,10 +207,6 @@ def compact_thread(thread_id):
         summary_text = ""
         prompt_tokens = 0
         completion_tokens = 0
-        queue_id = enter_queue(_user_id, current_user.is_premium, _app=_app)
-        if queue_id is None:
-            yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
-            return
         try:
             for chunk in client.stream_chat(summary_messages, mode="long"):
                 if isinstance(chunk, dict):
@@ -362,14 +229,14 @@ def compact_thread(thread_id):
                 user_summary = Message(
                     thread_id=_thread_id,
                     role="user",
-                    content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:",
+                    content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:"
                 )
                 db.session.add(user_summary)
                 assistant_summary = Message(
                     thread_id=_thread_id,
                     role="assistant",
                     content=summary_text,
-                    tokens_used=completion_tokens,
+                    tokens_used=completion_tokens
                 )
                 db.session.add(assistant_summary)
                 db.session.commit()
@@ -378,7 +245,7 @@ def compact_thread(thread_id):
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
-            leave_queue(queue_id, _app=_app)
+            pass
 
     return Response(_stream_and_save(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -400,14 +267,14 @@ def compact_progressive(thread_id):
     if len(all_messages) < 4:
         return Response(
             "data: " + json.dumps({"error": "Need at least 4 messages for progressive compact. Try full compact instead."}) + "\n\n",
-            mimetype="text/event-stream",
+            mimetype="text/event-stream"
         )
 
     allowed, used, limit = check_rate_limit()
     if not allowed:
         return Response(
             "data: " + json.dumps({"error": "rate_limited", "message": f"Free tier limit reached ({limit} messages per hour)."}) + "\n\n",
-            mimetype="text/event-stream",
+            mimetype="text/event-stream"
         )
 
     half_point = len(all_messages) // 2
@@ -443,10 +310,6 @@ def compact_progressive(thread_id):
         summary_text = ""
         prompt_tokens = 0
         completion_tokens = 0
-        queue_id = enter_queue(_user_id, current_user.is_premium, _app=_app)
-        if queue_id is None:
-            yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
-            return
         try:
             for chunk in client.stream_chat(summary_messages, mode="standard"):
                 if isinstance(chunk, dict):
@@ -472,7 +335,7 @@ def compact_progressive(thread_id):
                     thread_id=_thread_id,
                     role="user",
                     content=f"\U0001f4dd **Earlier conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary:",
-                    created_at=_oldest_time,
+                    created_at=_oldest_time
                 )
                 db.session.add(user_summary)
                 assistant_summary = Message(
@@ -480,7 +343,7 @@ def compact_progressive(thread_id):
                     role="assistant",
                     content=summary_text,
                     tokens_used=completion_tokens,
-                    created_at=_oldest_time + timedelta(seconds=1),
+                    created_at=_oldest_time + timedelta(seconds=1)
                 )
                 db.session.add(assistant_summary)
                 db.session.commit()
@@ -489,7 +352,7 @@ def compact_progressive(thread_id):
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
-            leave_queue(queue_id, _app=_app)
+            pass
 
     return Response(_stream_and_save(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -534,7 +397,7 @@ def compact_save(thread_id):
     
             role="user",
             content=f"\U0001f4dd **Earlier conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary:",
-            created_at=oldest_time,
+            created_at=oldest_time
         )
         db.session.add(user_summary)
         assistant_summary = Message(
@@ -542,7 +405,7 @@ def compact_save(thread_id):
             role="assistant",
             content=content,
             tokens_used=tokens,
-            created_at=oldest_time + timedelta(seconds=1),
+            created_at=oldest_time + timedelta(seconds=1)
         )
         db.session.add(assistant_summary)
     else:
@@ -550,14 +413,14 @@ def compact_save(thread_id):
         user_summary = Message(
     
             role="user",
-            content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:",
+            content=f"\U0001f4dd **Conversation compacted** ({msg_count} messages \u2192 summary)\n\nHere is the summary of our previous conversation:"
         )
         db.session.add(user_summary)
         assistant_summary = Message(
     
             role="assistant",
             content=content,
-            tokens_used=tokens,
+            tokens_used=tokens
         )
         db.session.add(assistant_summary)
 
@@ -783,7 +646,7 @@ def workspace_context_stats(thread_id):
         Thread.query
         .filter(
             Thread.workspace_id == thread.workspace_id,
-            Thread.id != thread.id,
+            Thread.id != thread.id
         )
         .order_by(Thread.updated_at.desc())
         .all()

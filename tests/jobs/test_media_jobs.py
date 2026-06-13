@@ -86,7 +86,7 @@ def _make_job(db, user, thread, kind, params):
 # --- image ----------------------------------------------------------------
 
 def test_run_image_persists(app, db, make_user, fake_redis, monkeypatch):
-    import app.chat.images as images
+    import app.chat as images
     from app.jobs.worker import run_job
     from app.jobs import read_events
 
@@ -116,7 +116,7 @@ def test_run_image_persists(app, db, make_user, fake_redis, monkeypatch):
 
 
 def test_image_idempotent(app, db, make_user, fake_redis, monkeypatch):
-    import app.chat.images as images
+    import app.chat as images
     from app.jobs.worker import run_job
 
     user = make_user()
@@ -141,7 +141,7 @@ def test_image_idempotent(app, db, make_user, fake_redis, monkeypatch):
 # --- edit -----------------------------------------------------------------
 
 def test_run_edit_persists(app, db, make_user, fake_redis, monkeypatch):
-    import app.chat.images as images
+    import app.chat as images
     from app.jobs.worker import run_job
 
     user = make_user()

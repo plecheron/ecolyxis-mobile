@@ -4,7 +4,6 @@ from app import db
 from app.models import Workspace, Thread, Message
 from . import workspace_bp
 from .summaries import generate_thread_summary
-from app.queue import enter_queue, leave_queue
 from app.llm import LLMClient
 from app.chat import check_rate_limit
 
@@ -328,10 +327,6 @@ def ephemeral_chat(workspace_id):
     _is_premium = current_user.is_premium
 
     def _stream():
-        queue_id = enter_queue(_user_id, _is_premium, _app=_app)
-        if queue_id is None:
-            yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
-            return
         try:
             full_response = ""
             prompt_tokens = 0
@@ -356,7 +351,7 @@ def ephemeral_chat(workspace_id):
             logger.error("Ephemeral chat error: %s", e)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
-            leave_queue(queue_id, _app=_app)
+            pass
 
     return Response(_stream(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

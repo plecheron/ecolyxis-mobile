@@ -10,7 +10,6 @@ from flask_login import login_required, current_user
 from app import db
 from app.models import Thread, Message, GeneratedImage, GeneratedVideo
 from app.llm import LLMClient
-from app.queue import enter_queue, leave_queue
 
 UPLOAD_FOLDER = "/opt/Ecolyxis/uploads"
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
@@ -163,62 +162,32 @@ def _run_precise(client, msgs, mode):
 
     return final, total_prompt_tokens, total_completion_tokens
 
-
-def _stream_llm(client, messages, mode, user_id, is_premium, app,
-                precise=False, show_thinking=True, compacted=False):
-    """Generator: enter queue → stream LLM response as SSE data lines → cleanup.
-
-    Yields ``"data: {…}\\n\\n"`` strings suitable for a ``text/event-stream`` Response.
-    """
-    queue_id = enter_queue(user_id, is_premium, _app=app)
-    if queue_id is None:
-        yield f"data: {json.dumps({'error': 'queue_timeout', 'message': 'Too many requests. Please try again.'})}\n\n"
-        return
-    try:
-        if precise:
-            text, prompt_tokens, completion_tokens = _run_precise(client, messages, "standard")
-            yield f"data: {json.dumps({'content': text}, ensure_ascii=False)}\n\n"
-        else:
-            text = ""
-            prompt_tokens = 0
-            completion_tokens = 0
-            for chunk in client.stream_chat(messages, mode=mode):
-                if isinstance(chunk, dict):
-                    if "thinking_start" in chunk:
-                        if show_thinking:
-                            yield f"data: {json.dumps({'thinking_start': True})}\n\n"
-                    elif "thinking_progress" in chunk:
-                        if show_thinking:
-                            yield f"data: {json.dumps({'thinking_progress': chunk['thinking_progress']})}\n\n"
-                    elif "thinking_end" in chunk:
-                        if show_thinking:
-                            yield f"data: {json.dumps({'thinking_end': True, 'tokens': chunk.get('tokens', 0)})}\n\n"
-                    else:
-                        prompt_tokens = chunk.get("prompt_tokens", 0)
-                        completion_tokens = chunk.get("completion_tokens", 0)
-                else:
-                    text += chunk
-                    yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
-
-        done = {"done": True, "full_response": text,
-                "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
-        if compacted:
-            done["compacted"] = True
-        yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        leave_queue(queue_id, _app=app)
-
-
 def _sse(generator):
     """Wrap a generator in a streaming SSE Response."""
     return Response(generator, mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+
+
+def _save_remote_image(remote_url):
+    """Fetch an image from the remote server and save it locally.
+
+    Returns (local_filename, local_path) or raises.
+    """
+    import uuid
+    import requests as req_lib
+    _ensure_upload_dir()
+    img_resp = req_lib.get(remote_url, timeout=60)
+    if img_resp.status_code != 200:
+        raise RuntimeError(f"Failed to fetch image: HTTP {img_resp.status_code}")
+    local_name = f"{uuid.uuid4().hex[:12]}.png"
+    local_path = os.path.join(UPLOAD_FOLDER, local_name)
+    with open(local_path, "wb") as fout:
+        fout.write(img_resp.content)
+    return local_name, local_path
+
 from app.chat import routes  # noqa: E402,F401 - register text-chat routes
-from app.chat import images  # noqa: E402,F401 - register image routes
 from app.chat import video   # noqa: E402,F401 - register video routes
 from app.chat import export   # noqa: E402,F401 - register export routes
 from app.chat import tts      # noqa: E402,F401 - register TTS routes

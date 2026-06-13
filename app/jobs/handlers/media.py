@@ -103,7 +103,7 @@ def _fetch_artifact(remote_url, *, suffix):
 
 
 def _run_image_via_api(job, publish, *, kind, params, label, parent_id=None):
-    from app.chat.images import _save_remote_image
+    from app.chat import _save_remote_image
     from app.jobs.api_client import stream_remote_job
 
     existing = GeneratedImage.query.filter_by(job_id=job.id).first()
