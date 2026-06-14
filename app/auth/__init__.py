@@ -35,6 +35,29 @@ def _record_ip_attempt(ip):
     """Record a signup attempt for this IP."""
     _signup_attempts.setdefault(ip, []).append(time.time())
 
+# Login brute-force protection (#114)
+_login_attempts = {}
+LOGIN_RATE_LIMIT = 5       # max failed logins per IP
+LOGIN_RATE_WINDOW = 900    # 15 minutes
+LOGIN_LOCKOUT_TIME = 900   # lockout for 15 minutes
+
+def _check_login_rate(ip):
+    """Return True if IP is allowed to attempt login."""
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < LOGIN_RATE_WINDOW]
+    _login_attempts[ip] = attempts
+    return len(attempts) < LOGIN_RATE_LIMIT
+
+def _record_login_failure(ip):
+    """Record a failed login attempt for this IP."""
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+def _clear_login_attempts(ip):
+    """Clear failed login attempts after successful login."""
+    _login_attempts.pop(ip, None)
+
+
 
 def _generate_captcha():
     """Generate a simple math question + answer, store in session."""

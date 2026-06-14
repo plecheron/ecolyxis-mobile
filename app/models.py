@@ -222,10 +222,24 @@ class Wallet(db.Model):
         return txn
 
     def debit(self, pence, description, api_key_id=None):
-        """Deduct credits from wallet. Raises ValueError if insufficient."""
-        if self.balance_pence < pence:
+        """Deduct credits from wallet. Raises ValueError if insufficient.
+        
+        Uses atomic UPDATE to prevent TOCTOU race condition (#117).
+        """
+        from sqlalchemy import update
+        # Flush pending ORM changes (e.g. prior credit() calls) so the
+        # raw SQL UPDATE sees the correct balance (#117).
+        db.session.flush()
+        result = db.session.execute(
+            update(Wallet.__table__)
+            .where(Wallet.__table__.c.id == self.id,
+                   Wallet.__table__.c.balance_pence >= pence)
+            .values(balance_pence=Wallet.__table__.c.balance_pence - pence)
+        )
+        if result.rowcount == 0:
+            db.session.rollback()
             raise ValueError("Insufficient balance")
-        self.balance_pence -= pence
+        db.session.refresh(self)
         txn = Transaction(
             wallet_id=self.id,
             type="usage",
@@ -412,5 +426,9 @@ class SharedLink(db.Model):
     def is_expired(self):
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at.replace(tzinfo=timezone.utc)
+        expiry = self.expires_at
+        # Handle both naive (SQLite) and aware (Postgres) datetimes
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expiry
 

@@ -12,6 +12,9 @@ from app.auth import (
     _check_ip_rate,
     _record_ip_attempt,
     _generate_captcha,
+    _check_login_rate,
+    _record_login_failure,
+    _clear_login_attempts,
     FORM_MIN_SECONDS,
 )
 
@@ -100,12 +103,19 @@ def _safe_next(target):
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        login = request.form.get("login", "").strip()
+        login_input = request.form.get("login", "").strip()
         password = request.form.get("password", "")
 
-        user = User.query.filter((User.email == login) | (User.username == login)).first()
+        # Brute-force protection (#114)
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+        if not _check_login_rate(ip):
+            flash("Too many failed login attempts. Please try again later.", "error")
+            return render_template("auth/login.html", login_value=login_input)
+
+        user = User.query.filter((User.email == login_input) | (User.username == login_input)).first()
 
         if user and user.check_password(password):
+            _clear_login_attempts(ip)
             user.last_login = datetime.now(timezone.utc)
             db.session.commit()
             login_user(user)
@@ -115,7 +125,9 @@ def login():
             resp.status_code = 303
             return resp
         else:
+            _record_login_failure(ip)
             flash("Invalid credentials.", "error")
+            return render_template("auth/login.html", login_value=login_input)
 
     return render_template("auth/login.html")
 

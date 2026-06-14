@@ -103,6 +103,7 @@
             </a>
             {% endfor %}
         </nav>
+        <div style="font-size:0.65rem;color:var(--text-muted,#8b949e);opacity:0.6;padding:0 16px 4px;">© 2026 Ecolyxis</div>
         <div class="sidebar-footer">
             <span class="user-name">👤 {{ current_user.display_name }}</span>
             <div class="sidebar-footer-actions">
@@ -186,9 +187,6 @@
                 <optgroup label="🎨 Media">
                     <option value="image"{{ ' selected' if _sel == 'image' }}>🖼️ Image Generation</option>
                     <option value="edit"{{ ' selected' if _sel == 'edit' }}>✏️ Image Editing</option>
-                    <!-- Video generation disabled — Wan2.2 backend non-functional
-                    <option value="video"{{ ' selected' if _sel == 'video' }}>🎬 Video Generation</option>
-                    -->
                     {% if rate_info.is_premium %}<option value="vision"{{ ' selected' if _sel == 'vision' }}>👁️ Vision — Image understanding</option>{% endif %}
                 </optgroup>
             </select>
@@ -234,6 +232,19 @@
         {% endmacro %}
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
 
+        {% if not messages %}
+        <div class="chat-empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;text-align:center;padding:2rem;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🌿</div>
+            <h2 style="margin-bottom:0.5rem;">Start a conversation</h2>
+            <p style="color:var(--text-muted,#8b949e);margin-bottom:1.5rem;">Ask me anything — powered by sustainable AI.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:400px;">
+                <button class="btn btn-outline btn-sm suggestion-chip" onclick="document.getElementById('message-input').value='Explain quantum computing in simple terms';document.getElementById('message-input').focus()">Explain quantum computing</button>
+                <button class="btn btn-outline btn-sm suggestion-chip" onclick="document.getElementById('message-input').value='Write a Python function to check if a number is prime';document.getElementById('message-input').focus()">Write Python code</button>
+                <button class="btn btn-outline btn-sm suggestion-chip" onclick="document.getElementById('message-input').value='Give me ideas for a sustainable lifestyle';document.getElementById('message-input').focus()">Sustainable living</button>
+                <button class="btn btn-outline btn-sm suggestion-chip" onclick="document.getElementById('message-input').value='What are the latest developments in renewable energy?';document.getElementById('message-input').focus()">Renewable energy</button>
+            </div>
+        </div>
+        {% endif %}
         {% for msg in messages %}
                         <div class="message message-{{ msg.role }}{% if msg.tokens_used and current_user.is_premium and msg.tokens_used > 8192 %} message-tokens-danger{% elif msg.tokens_used and current_user.is_premium and msg.tokens_used > 4096 %} message-tokens-warning{% endif %}" data-msg-id="{{ msg.id }}"{% if msg.job_id %} data-job-id="{{ msg.job_id }}"{% endif %}{% if msg.tokens_used %} data-tokens="{{ msg.tokens_used }}"{% endif %}>
                 <div class="message-avatar" aria-hidden="true">{{ '👤' if msg.role == 'user' else '🌿' }}</div>
@@ -265,7 +276,7 @@
                     <textarea id="chat-input" placeholder="Type your message..." rows="1"
                               onkeydown="handleKey(event)"></textarea>
                     <div class="send-stop-wrapper">
-                        <button type="submit" id="send-btn">
+                        <button type="submit" id="send-btn" aria-label="Send message" title="Send">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="22" y1="2" x2="11" y2="13"></line>
                                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -302,6 +313,42 @@
     margin: 0;
 }
 </style>
+
+
+<!-- Custom Confirm Modal (#126) -->
+<div id="custom-confirm-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeCustomConfirm()">
+    <div class="modal-card" style="max-width:400px">
+        <div class="modal-header">
+            <h3 id="confirm-title">Confirm</h3>
+            <button onclick="closeCustomConfirm()" class="modal-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+            <p id="confirm-message">Are you sure?</p>
+        </div>
+        <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;">
+            <button class="btn btn-outline" onclick="closeCustomConfirm()" id="confirm-cancel">Cancel</button>
+            <button class="btn btn-danger" id="confirm-ok" style="background:#da3633;color:#fff;">Confirm</button>
+        </div>
+    </div>
+</div>
+<script>
+let _confirmCallback = null;
+function customConfirm(message, title, callback) {
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-title').textContent = title || 'Confirm';
+    document.getElementById('custom-confirm-modal').style.display = 'flex';
+    _confirmCallback = callback;
+    document.getElementById('confirm-ok').onclick = function() {
+        closeCustomConfirm();
+        if (_confirmCallback) { _confirmCallback(); _confirmCallback = null; }
+    };
+    document.getElementById('confirm-cancel').onclick = closeCustomConfirm;
+}
+function closeCustomConfirm() {
+    document.getElementById('custom-confirm-modal').style.display = 'none';
+    _confirmCallback = null;
+}
+</script>
 
 {% block scripts %}
 <script>
@@ -3567,6 +3614,20 @@ function deleteThreadFromSidebar(threadId) {
         });
     });
 })();
+
+
+// #133: Close more-actions menus on outside click or re-toggle
+document.addEventListener('click', function(e) {
+    document.querySelectorAll('.msg-actions-secondary').forEach(function(el) {
+        if (el.style.display === 'inline-flex' || el.classList.contains('show')) {
+            var btn = el.parentElement.querySelector('.msg-actions-more-btn');
+            if (btn && !btn.contains(e.target) && !el.contains(e.target)) {
+                el.style.display = 'none';
+                el.classList.remove('show');
+            }
+        }
+    });
+}, true);
 
 </script>
 {% endblock %}

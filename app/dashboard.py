@@ -6,6 +6,20 @@ from app.models import Thread, Message, Workspace
 from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 from datetime import datetime, timezone, timedelta
 
+import re as _re
+
+def _strip_markdown(text):
+    """Strip markdown formatting from text for preview snippets (#125)."""
+    if not text:
+        return ""
+    text = _re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = _re.sub(r'\*(.+?)\*', r'\1', text)
+    text = _re.sub(r'`(.+?)`', r'\1', text)
+    text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    text = _re.sub(r'^#+\s*', '', text)
+    text = _re.sub(r'^>\s*', '', text)
+    return text
+
 dash_bp = Blueprint("dashboard", __name__)
 
 
@@ -56,7 +70,7 @@ def index():
             .join(subq, and_(Message.thread_id == subq.c.thread_id, Message.id == subq.c.max_id))
             .all()
         )
-        last_snippets = {tid: (content[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
+        last_snippets = {tid: (_strip_markdown(content)[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
 
     # Token usage stats (combined into fewer queries)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -148,7 +162,7 @@ def workspace_detail(workspace_id):
             .join(subq, and_(Message.thread_id == subq.c.thread_id, Message.id == subq.c.max_id))
             .all()
         )
-        last_snippets = {tid: (content[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
+        last_snippets = {tid: (_strip_markdown(content)[:80] + ("..." if len(content) > 80 else "")) for tid, content in last_msgs}
 
     # --- Context budget stats (#81) ---
     # (#84) Generate fallback summaries from messages if thread.summary is empty

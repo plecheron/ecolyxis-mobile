@@ -91,6 +91,17 @@ def create_app(test_config=None):
     app.register_blueprint(analytics_bp)
     app.register_blueprint(models_selector_bp)
 
+
+    # Security headers (#116)
+    @app.after_request
+    def _set_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        return response
+
     # CSRF protection for all non-API POST routes
     from app.csrf import generate_csrf_token, validate_csrf_token
     app.jinja_env.globals["csrf_token"] = generate_csrf_token

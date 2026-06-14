@@ -31,6 +31,7 @@ def create_share(thread_id):
     link = SharedLink(
         thread_id=thread_id,
         user_id=current_user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.session.add(link)
     db.session.commit()
