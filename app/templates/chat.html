@@ -319,7 +319,7 @@
 
 
 <!-- Custom Confirm Modal (#126) -->
-<div id="custom-confirm-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeCustomConfirm()">
+<div id="custom-confirm-modal" class="modal-overlay" style="display:none" inert aria-hidden="true" onclick="if(event.target===this)closeCustomConfirm()">
     <div class="modal-card" style="max-width:400px">
         <div class="modal-header">
             <h3 id="confirm-title">Confirm</h3>
@@ -339,7 +339,10 @@ let _confirmCallback = null;
 function customConfirm(message, title, callback) {
     document.getElementById('confirm-message').textContent = message;
     document.getElementById('confirm-title').textContent = title || 'Confirm';
-    document.getElementById('custom-confirm-modal').style.display = 'flex';
+    var m = document.getElementById('custom-confirm-modal');
+        m.style.display = 'flex';
+        m.removeAttribute('inert');
+        m.setAttribute('aria-hidden', 'false');
     _confirmCallback = callback;
     document.getElementById('confirm-ok').onclick = function() {
         closeCustomConfirm();
@@ -348,7 +351,10 @@ function customConfirm(message, title, callback) {
     document.getElementById('confirm-cancel').onclick = closeCustomConfirm;
 }
 function closeCustomConfirm() {
-    document.getElementById('custom-confirm-modal').style.display = 'none';
+    var m = document.getElementById('custom-confirm-modal');
+        m.style.display = 'none';
+        m.setAttribute('inert', '');
+        m.setAttribute('aria-hidden', 'true');
     _confirmCallback = null;
 }
 </script>

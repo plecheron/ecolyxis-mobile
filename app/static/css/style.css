@@ -2336,3 +2336,7 @@ a:hover {
 .suggestion-chip { cursor: pointer; }
 details summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 details[open] summary { margin-bottom: 8px; }
+
+/* #141: Hide focusable elements in inert modals */
+[inert] { pointer-events: none; }
+[inert] * { visibility: hidden; }

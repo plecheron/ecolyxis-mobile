@@ -15,6 +15,10 @@
         a { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; }
         .btn-primary { background: #22c55e; color: #000; }
         .btn-outline { border: 1px solid #444; color: #e0e0e0; }
+        .btn-back { font-size: 0.85rem; padding: 0.5rem 1rem; color: #888; text-decoration: none; }
+        .btn-back:hover { color: #e0e0e0; }
+        .btn-back { font-size: 0.85rem; padding: 0.5rem 1rem; color: #888; text-decoration: none; }
+        .btn-back:hover { color: #e0e0e0; }
         a:hover { opacity: 0.9; }
     </style>
 </head>
@@ -26,6 +30,14 @@
         <div class="btns">
             <a href="/" class="btn-primary">🏠 Go Home</a>
             <a href="/dashboard" class="btn-outline">💬 My Chats</a>
+        </div>
+        <div class="btns" style="margin-top: 1rem;">
+            <a href="javascript:history.back()" class="btn-back">← Go Back</a>
+            <a href="/contact" class="btn-back">✉️ Contact Support</a>
+        </div>
+        <div class="btns" style="margin-top: 1rem;">
+            <a href="javascript:history.back()" class="btn-back">← Go Back</a>
+            <a href="/contact" class="btn-back">✉️ Contact Support</a>
         </div>
     </div>
 </body>
