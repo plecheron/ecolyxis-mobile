@@ -75,5 +75,24 @@
     };
     </script>
     {% block scripts %}{% endblock %}
+
+    <!-- Toast notification system (#154) -->
+    <div class="toast-container" id="toast-container"></div>
+    <script>
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toast-container');
+        if (!container) return;
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.style.animation = 'toastOut 0.25s ease-in forwards';
+            setTimeout(function() { toast.remove(); }, 250);
+        }, 3500);
+    }
+    </script>
+
 </body>
 </html>

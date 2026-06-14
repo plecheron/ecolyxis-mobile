@@ -502,18 +502,100 @@ a:hover {
     flex: 1;
     margin-right: 8px;
     background: var(--bg-primary);
-    border: 1px solid var(--accent);
+    border: 2px solid var(--accent, #2ea44f);
     border-radius: 4px;
     color: var(--text);
     font-size: 0.85rem;
     padding: 2px 6px;
     outline: none;
+    box-shadow: 0 0 0 2px rgba(46, 164, 79, 0.15);
 }
 .sidebar-empty {
     text-align: center;
     color: var(--text-muted);
     padding: 2rem 1rem;
     font-size: 0.85rem;
+}
+
+/* Loading skeletons (#155) */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary, #161b22) 25%,
+        var(--bg-tertiary, #21262d) 50%,
+        var(--bg-secondary, #161b22) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 6px;
+}
+.skeleton-text { height: 1rem; margin-bottom: 0.5rem; }
+.skeleton-card {
+    height: 80px;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+}
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* Toast notification system (#154) */
+.toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+.toast {
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    pointer-events: auto;
+    animation: toastIn 0.25s ease-out;
+    max-width: 360px;
+}
+.toast.toast-success { background: var(--accent, #2ea44f); }
+.toast.toast-error { background: #dc3545; }
+.toast.toast-info { background: var(--bg-secondary, #161b22); border: 1px solid var(--border); }
+@keyframes toastIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toastOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
+/* Billing page classes (#140) */
+.billing-api-credits {
+    margin-top: 1.5rem;
+}
+.billing-api-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.billing-api-desc {
+    font-size: 0.85rem;
+    opacity: 0.8;
+    margin: 0.25rem 0 0;
+}
+
+/* Workspace modal disabled button (#131) */
+.ws-modal .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Sidebar Footer */
@@ -868,6 +950,11 @@ a:hover {
     font-weight: 600;
     background: var(--bg-secondary, #161b22);
     color: var(--text-primary, #e6edf3);
+    border: 2px solid var(--accent, #2ea44f) !important;
+    border-radius: 6px;
+    padding: 4px 8px;
+    box-shadow: 0 0 0 3px rgba(46, 164, 79, 0.2);
+    outline: none;
     border: 1px solid var(--accent, #2ecc71);
     border-radius: 4px;
     padding: 2px 6px;
@@ -1761,6 +1848,10 @@ a:hover {
     }
     .sidebar.open {
         transform: translateX(0);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    }
+    body:has(.sidebar.open) {
+        overflow: hidden;
     }
     .sidebar-close {
         display: block;

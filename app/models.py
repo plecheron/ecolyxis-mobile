@@ -277,6 +277,7 @@ class GenerationJob(db.Model):
     __tablename__ = "generation_job"
 
     KINDS = ("chat", "image", "video", "edit", "upscale", "tts")
+    MAX_RETRIES = 3
     TERMINAL = ("done", "error", "canceled")
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -290,6 +291,7 @@ class GenerationJob(db.Model):
     error = db.Column(db.Text, nullable=True)
     worker_id = db.Column(db.String(80), nullable=True)
     heartbeat_at = db.Column(db.DateTime, nullable=True)  # last worker liveness tick
+    retry_count = db.Column(db.Integer, nullable=False, default=0)  # transient failure retries (#120)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

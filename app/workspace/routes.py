@@ -14,7 +14,7 @@ logger = logging.getLogger("ecolyxis.workspace.routes")
 
 def _get_workspace_context_by_id(workspace_id, max_chars=2000):
     """Build workspace context string given just a workspace_id (no thread needed)."""
-    workspace = Workspace.query.get(workspace_id)
+    workspace = db.session.get(Workspace, workspace_id)
     if not workspace:
         return None
 

@@ -3,6 +3,7 @@ import logging
 import json
 import time
 
+from app import db
 from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 logger = logging.getLogger('ecolyxis.llm')
 
@@ -26,7 +27,7 @@ def get_workspace_context(thread, max_tokens=WORKSPACE_CONTEXT_BUDGET):
 
     from app.models import Thread, Message, Workspace
 
-    workspace = Workspace.query.get(thread.workspace_id)
+    workspace = db.session.get(Workspace, thread.workspace_id)
     if not workspace:
         return None
 

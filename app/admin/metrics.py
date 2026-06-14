@@ -301,6 +301,12 @@ def _llm_error_stats():
 # ── Analytics helpers ────────────────────────────────────────────────
 
 def _day_group(col):
+    """Group a datetime column by day — works on both PostgreSQL and SQLite."""
+    from sqlalchemy import inspect as _inspect
+    dialect = _inspect(db.engine).dialect.name
+    if dialect == "sqlite":
+        # SQLite doesn't have date_trunc; use date() for day-level grouping
+        return func.date(col)
     return func.date_trunc("day", col)
 
 

@@ -86,15 +86,30 @@ def view_shared(share_id):
     if not thread:
         abort(404)
 
-    messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at).all()
+    # Pagination (#124) — cap at 50 messages per page
+    page = request.args.get("page", 1, type=int)
+    per_page = 50
+    total = Message.query.filter_by(thread_id=thread.id).count()
+    messages = (
+        Message.query
+        .filter_by(thread_id=thread.id)
+        .order_by(Message.created_at)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    total_pages = max(1, (total + per_page - 1) // per_page)
 
-    # Increment view count
-    link.view_count += 1
-    db.session.commit()
+    # Increment view count (only on first page to avoid inflation)
+    if page == 1:
+        link.view_count += 1
+        db.session.commit()
 
     return render_template(
         "shared.html",
         thread=thread,
         messages=messages,
         shared_link=link,
+        page=page,
+        total_pages=total_pages,
     )

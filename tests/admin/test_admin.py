@@ -319,7 +319,7 @@ def test_top_users(app, db):
 # admin/metrics.py — chart helpers (date_trunc is PG-only, skip on SQLite)
 # ═══════════════════════════════════════════════════════════════
 
-@pytest.mark.skip(reason="date_trunc is PostgreSQL-only, not available in SQLite test DB")
+# Date grouping now dialect-aware (#158)
 def test_token_chart_data(app, db):
     from app.admin.metrics import _token_chart_data
     user = _make_user(db)
@@ -330,7 +330,7 @@ def test_token_chart_data(app, db):
         assert isinstance(data, list)
 
 
-@pytest.mark.skip(reason="date_trunc is PostgreSQL-only, not available in SQLite test DB")
+# Date grouping now dialect-aware (#158)
 def test_user_chart_data(app, db):
     from app.admin.metrics import _user_chart_data
     user = _make_user(db)

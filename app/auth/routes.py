@@ -48,6 +48,7 @@ def signup():
 
         # CAPTCHA check
         expected = session.get("captcha_answer", "")
+        captcha_response = captcha_response.lower().strip()
         if not captcha_response or captcha_response != expected:
             flash("Incorrect answer to the security question.", "error")
             return render_template("auth/signup.html", email=email, captcha=_generate_captcha())

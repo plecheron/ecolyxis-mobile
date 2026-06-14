@@ -654,7 +654,7 @@ def workspace_context_stats(thread_id):
     if not thread.workspace_id or thread.use_workspace_context is False:
         return {"enabled": False}
 
-    workspace = Workspace.query.get(thread.workspace_id)
+    workspace = db.session.get(Workspace, thread.workspace_id)
     if not workspace:
         return {"enabled": False}
 

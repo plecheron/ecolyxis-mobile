@@ -217,6 +217,18 @@ def create_app(test_config=None):
             """Custom 500 page."""
             return render_template("500.html"), 500
 
+        @app.route("/settings")
+        def settings_redirect():
+            """Redirect /settings to dashboard."""
+            from flask import redirect, url_for
+            return redirect(url_for("dashboard.index"))
+
+        @app.route("/security")
+        def security_redirect():
+            """Redirect /security to dashboard."""
+            from flask import redirect, url_for
+            return redirect(url_for("dashboard.index"))
+
         @app.route("/chat")
         @login_required
         def chat_redirect():

@@ -60,18 +60,47 @@ def _clear_login_attempts(ip):
 
 
 def _generate_captcha():
-    """Generate a simple math question + answer, store in session."""
-    a = random.randint(1, 12)
-    b = random.randint(1, 12)
-    ops = [("+", lambda x, y: x + y), ("−", lambda x, y: x - y)]
-    op_sym, op_fn = random.choice(ops)
-    if op_sym == "−" and a < b:
-        a, b = b, a
-    answer = op_fn(a, b)
-    question = f"{a} {op_sym} {b} = ?"
-    session["captcha_answer"] = str(answer)
+    """Generate a varied anti-bot challenge, store answer in session.
+
+    Rotates between four formats so bots can't pattern-match a single
+    equation type:
+      1. Two-step arithmetic: a * b + c = ?
+      2. Reverse question:   ? + a = b
+      3. Letter extraction:  "What is letter 3 of 'sunflower'?"
+      4. Mixed operations:   a + b * c = ? (operator precedence)
+    """
+    import random as _rng
+    fmt = _rng.randint(1, 4)
+
+    if fmt == 1:
+        a = _rng.randint(3, 9)
+        b = _rng.randint(2, 9)
+        c = _rng.randint(1, 20)
+        answer = a * b + c
+        question = f"{a} \u00d7 {b} + {c} = ?"
+    elif fmt == 2:
+        a = _rng.randint(5, 30)
+        b = a + _rng.randint(3, 15)
+        answer = a
+        question = f"? + {b - a} = {b}"
+    elif fmt == 3:
+        words = ["sunflower", "computer", "keyboard", "elephant",
+                 "rainbow", "umbrella", "butterfly", "mountain", "dolphin"]
+        word = _rng.choice(words)
+        pos = _rng.randint(1, len(word))
+        answer = word[pos - 1]
+        question = f"What is letter {pos} of \'{word}\'? (lowercase)"
+    else:
+        a = _rng.randint(1, 15)
+        b = _rng.randint(2, 8)
+        c = _rng.randint(2, 8)
+        answer = a + b * c
+        question = f"{a} + {b} \u00d7 {c} = ?"
+
+    session["captcha_answer"] = str(answer).lower().strip()
     session["captcha_time"] = time.time()
     return question
+
 
 
 from app.auth import routes, webauthn  # noqa: E402,F401 — register routes

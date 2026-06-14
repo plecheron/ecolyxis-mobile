@@ -90,15 +90,30 @@ def run_job(app, wid, job_id):
             publish({"type": "done", **(result or {})})
             log.info("job %s done", job_id)
         except Exception as e:  # noqa: BLE001 - record and surface to the client
-            log.exception("job %s failed", job_id)
+            log.exception("job %s failed (attempt %d/%d)", job_id, job.retry_count + 1, GenerationJob.MAX_RETRIES)
             db.session.rollback()
             job = db.session.get(GenerationJob, job_id)
             if job is not None:
-                job.status = "error"
-                job.error = str(e)[:2000]
-                job.heartbeat_at = datetime.now(timezone.utc)
-                db.session.commit()
-            publish({"type": "error", "message": str(e)})
+                # Retry on transient failures (connection errors, timeouts)
+                is_transient = any(kw in str(e).lower() for kw in (
+                    "timeout", "connection", "refused", "reset",
+                    "unavailable", "temporary", "503", "502", "500"
+                ))
+                if is_transient and job.retry_count < GenerationJob.MAX_RETRIES:
+                    job.retry_count += 1
+                    job.status = "queued"
+                    job.worker_id = None
+                    job.heartbeat_at = datetime.now(timezone.utc)
+                    db.session.commit()
+                    enqueue(str(job.id), job.is_premium)
+                    publish({"type": "retry", "message": f"Retrying ({job.retry_count}/{GenerationJob.MAX_RETRIES})\u2026", "error": str(e)})
+                    log.info("job %s re-queued for retry %d/%d", job_id, job.retry_count, GenerationJob.MAX_RETRIES)
+                else:
+                    job.status = "error"
+                    job.error = str(e)[:2000]
+                    job.heartbeat_at = datetime.now(timezone.utc)
+                    db.session.commit()
+                    publish({"type": "error", "message": str(e)})
         finally:
             expire_events(job_id)
 

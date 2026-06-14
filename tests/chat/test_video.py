@@ -1,7 +1,10 @@
 """Video routes tests: admin gate, rate limit, empty prompt, not configured, animate."""
 import json
+import pytest
 from unittest.mock import patch, MagicMock
 from app.models import Thread
+
+pytestmark = pytest.mark.skip(reason="Video routes disabled — Wan2.2 backend non-functional (#118)")
 
 
 def _thread(db, user, title="Vid"):

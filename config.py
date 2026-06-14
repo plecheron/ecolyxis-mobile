@@ -31,7 +31,7 @@ class Config:
     # public endpoint is end-to-end HTTPS, or login cookies won't be sent.
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0") not in ("0", "", "false", "False")
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "1") not in ("0", "", "false", "False")
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE

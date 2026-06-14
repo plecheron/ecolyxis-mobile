@@ -51,6 +51,9 @@
                 {% endif %}
             </span>
             <div class="sidebar-footer-actions">
+                <a href="/api-keys/" class="sidebar-icon-btn" title="API Keys" aria-label="API Keys">
+                    🔑
+                </a>
                 <a href="/contact/" class="sidebar-icon-btn" title="Contact" aria-label="Contact">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22,6 12,13 2,6"/></svg>
                 </a>
@@ -136,6 +139,14 @@
                 <div class="stat-card">
                     <div class="stat-value">{{ stats.total_messages }}</div>
                     <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ '{:,}'.format(stats.total_tokens) }}</div>
+                    <div class="stat-label">Tokens Used</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ threads|length }}</div>
+                    <div class="stat-label">Conversations</div>
                 </div>
                 <div class="stat-card">
                     <a href="{{ url_for('billing.index') }}" class="stat-link">
