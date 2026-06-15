@@ -165,6 +165,32 @@ def calculate_savings(energy_wh):
     return ecolyxis_co2e, cloud_co2e, savings_g
 
 
+def _get_reclaimed_data():
+    """Get CO₂ reclaimed from carbon offsets (purchases + tree planting).
+
+    Returns dict with carbon_capture_kg, tree_kg, total_reclaimed_kg/g.
+    """
+    try:
+        from app.carbon_offsets import get_reclaimed_totals
+        totals = get_reclaimed_totals()
+        return {
+            "carbon_capture_kg": totals["carbon_capture_kg"],
+            "tree_kg": totals["tree_kg"],
+            "total_reclaimed_kg": totals["total_reclaimed_kg"],
+            "total_reclaimed_g": totals["total_reclaimed_g"],
+            "offsets": totals.get("offsets", []),
+        }
+    except Exception:
+        logger.debug("Carbon offsets not available yet", exc_info=True)
+        return {
+            "carbon_capture_kg": 0.0,
+            "tree_kg": 0.0,
+            "total_reclaimed_kg": 0.0,
+            "total_reclaimed_g": 0.0,
+            "offsets": [],
+        }
+
+
 # ── Aggregation queries ─────────────────────────────────────────────────────
 
 def _get_user_energy(user_id):
@@ -302,6 +328,7 @@ def dashboard():
         uk_grid_factor=UK_GRID_CO2_PER_KWH,
         cloud_grid_factor=CLOUD_GRID_CO2_PER_KWH,
         cloud_pue=CLOUD_PUE,
+        reclaimed=_get_reclaimed_data(),
     )
 
 
@@ -313,6 +340,7 @@ def api_overview():
     messages_count = _get_user_messages_count(current_user.id)
     ecolyxis_co2e, cloud_co2e, savings_g = calculate_savings(energy_wh)
 
+    reclaimed = _get_reclaimed_data()
     return jsonify({
         "energy_wh": round(energy_wh, 4),
         "energy_kwh": round(energy_wh / 1000.0, 6),
@@ -321,6 +349,12 @@ def api_overview():
         "savings_g": round(savings_g, 2),
         "savings_kg": round(savings_g / 1000.0, 4),
         "messages_count": messages_count,
+        "reclaimed": {
+            "carbon_capture_kg": reclaimed["carbon_capture_kg"],
+            "tree_kg": reclaimed["tree_kg"],
+            "total_reclaimed_kg": reclaimed["total_reclaimed_kg"],
+            "total_reclaimed_g": reclaimed["total_reclaimed_g"],
+        },
         "methodology": {
             "uk_grid_co2_per_kwh": UK_GRID_CO2_PER_KWH,
             "cloud_grid_co2_per_kwh": CLOUD_GRID_CO2_PER_KWH,
@@ -336,10 +370,15 @@ def api_site_wide():
     energy_wh = _get_site_wide_energy()
     user_count = _get_site_wide_user_count()
     _, _, savings_g = calculate_savings(energy_wh)
+    reclaimed = _get_reclaimed_data()
 
     return jsonify({
         "total_energy_wh": round(energy_wh, 2),
         "total_savings_g": round(savings_g, 2),
         "total_savings_kg": round(savings_g / 1000.0, 4),
         "user_count": user_count,
+        "total_reclaimed_kg": reclaimed["total_reclaimed_kg"],
+        "total_reclaimed_g": reclaimed["total_reclaimed_g"],
+        "carbon_capture_kg": reclaimed["carbon_capture_kg"],
+        "tree_kg": reclaimed["tree_kg"],
     })

@@ -15,6 +15,7 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_banned = db.Column(db.Boolean, default=False, nullable=False)
 
     # Subscription
     tier = db.Column(db.String(20), default="free", nullable=False)  # "free" or "premium"
@@ -439,4 +440,33 @@ class SharedLink(db.Model):
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) > expiry
+
+
+class CarbonOffset(db.Model):
+    """Carbon offset purchase or tree planting record.
+
+    Two types:
+    - 'carbon_capture': A purchased carbon credit (e.g., 1 tonne direct air capture).
+      The amount_kg is claimed immediately.
+    - 'tree_planting': Trees planted with a live CO₂ reclamation calculation.
+      Conservative: 21 kg CO₂/year per tree, capped at 40-year lifetime (840 kg/tree).
+    """
+    __tablename__ = "carbon_offset"
+    id = db.Column(db.Integer, primary_key=True)
+    offset_type = db.Column(db.String(20), nullable=False)  # 'carbon_capture' or 'tree_planting'
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    # carbon_capture: total kg CO₂e claimed
+    amount_kg = db.Column(db.Float)
+    # tree_planting: number of trees planted
+    tree_count = db.Column(db.Integer)
+    reference_number = db.Column(db.String(100))  # Certificate/reference
+    cost_gbp = db.Column(db.Float)
+    # Certificate image stored as binary in DB
+    certificate_image = db.Column(db.LargeBinary)
+    certificate_image_filename = db.Column(db.String(200))
+    certificate_image_mime = db.Column(db.String(100))
+    purchase_date = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_by = db.Column(db.String(80))
 

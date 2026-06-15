@@ -16,6 +16,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const usersEl = document.getElementById('site-users');
         if (usersEl) usersEl.textContent = data.user_count || 0;
+        // CO₂ reclaimed counter (offsets + trees)
+        const reclaimedEl = document.getElementById('site-reclaimed');
+        const reclaimedEl2 = document.getElementById('site-reclaimed-2');
+        if (reclaimedEl || reclaimedEl2) {
+            const rkg = data.total_reclaimed_kg || 0;
+            const rText = rkg < 1
+                ? (data.total_reclaimed_g || 0).toFixed(1) + 'g'
+                : rkg.toFixed(2) + 'kg';
+            if (reclaimedEl) reclaimedEl.textContent = rText;
+            if (reclaimedEl2) reclaimedEl2.textContent = rText;
+        }
     } catch(e) {}
 });
 </script>
@@ -37,7 +48,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="hero-content">
             <div class="hero-badge">
                 <span class="pulse-dot"></span>
-                <span id="site-counter">—</span> CO₂e saved so far
+                <span id="site-counter">—</span> CO₂e saved ·
+                <span id="site-reclaimed">—</span> CO₂e reclaimed
             </div>
             <h1>Sustainable AI.<br><span class="highlight">No Compromises.</span></h1>
             <p>Powerful AI conversations powered by green energy. Real GPU efficiency with verified carbon offsetting — see exactly how much CO₂ you save with every message.</p>
@@ -123,6 +135,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="showcase-stat">
                     <div class="showcase-stat-value" id="site-counter-2">—</div>
                     <div class="showcase-stat-label">CO₂e saved</div>
+                </div>
+                <div class="showcase-stat">
+                    <div class="showcase-stat-value" id="site-reclaimed-2">—</div>
+                    <div class="showcase-stat-label">CO₂e reclaimed (offsets + trees)</div>
                 </div>
                 <div class="showcase-stat">
                     <div class="showcase-stat-value" id="site-users">—</div>

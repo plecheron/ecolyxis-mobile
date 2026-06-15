@@ -72,6 +72,7 @@ def create_app(test_config=None):
     from app.analytics import analytics_bp
     from app.models_selector import models_selector_bp
     from app.sustainability import sustainability_bp
+    from app.carbon_offsets import carbon_offsets_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dash_bp)
@@ -92,6 +93,7 @@ def create_app(test_config=None):
     app.register_blueprint(analytics_bp)
     app.register_blueprint(models_selector_bp)
     app.register_blueprint(sustainability_bp)
+    app.register_blueprint(carbon_offsets_bp)
 
 
     # Security headers (#116)
@@ -107,6 +109,16 @@ def create_app(test_config=None):
     # CSRF protection for all non-API POST routes
     from app.csrf import generate_csrf_token, validate_csrf_token
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
+
+    # Admin integration: ban enforcement + audit webhook + feature flags
+    from app.admin_integration import check_ban_status, register_audit_endpoint
+    register_audit_endpoint(app)
+
+    @app.before_request
+    def _check_ban():
+        if app.config.get("TESTING"):
+            return None
+        return check_ban_status()
 
     @app.before_request
     def _check_csrf():

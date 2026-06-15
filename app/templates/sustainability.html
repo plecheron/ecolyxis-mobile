@@ -38,6 +38,55 @@
         </div>
     </div>
 
+    {% if reclaimed and reclaimed.total_reclaimed_kg > 0 %}
+    <!-- CO₂ Reclaimed section -->
+    <div class="sustainability-grid" style="margin-top: 1.5rem;">
+        <div class="sustain-card sustain-hero" style="border-color: var(--green-primary);">
+            <div class="sustain-icon">♻️</div>
+            <div class="sustain-stat-value">{{ "%.2f"|format(reclaimed.total_reclaimed_kg) }}<span class="unit">kg</span></div>
+            <div class="sustain-stat-label">CO₂ Reclaimed</div>
+            <div class="sustain-stat-sub">Carbon offsets + tree planting (live)</div>
+        </div>
+        <div class="sustain-card">
+            <div class="sustain-icon">🏭</div>
+            <div class="sustain-stat-value">{{ "%.2f"|format(reclaimed.carbon_capture_kg) }}<span class="unit">kg</span></div>
+            <div class="sustain-stat-label">Carbon Capture</div>
+            <div class="sustain-stat-sub">Purchased offset credits</div>
+        </div>
+        <div class="sustain-card">
+            <div class="sustain-icon">🌳</div>
+            <div class="sustain-stat-value">{{ "%.4f"|format(reclaimed.tree_kg) }}<span class="unit">kg</span></div>
+            <div class="sustain-stat-label">Tree Reclamation</div>
+            <div class="sustain-stat-sub">21 kg CO₂/year per tree (conservative)</div>
+        </div>
+    </div>
+
+    {% if reclaimed.offsets %}
+    <div class="sustain-section">
+        <h2>Offset Records</h2>
+        <div class="thread-breakdown">
+            {% for o in reclaimed.offsets %}
+            <div class="thread-stat">
+                <div class="thread-stat-header">
+                    <span>{{ '🏭' if o.type == 'carbon_capture' else '🌳' }} {{ o.title }}</span>
+                    <span class="thread-stat-energy">
+                        {% if o.type == 'carbon_capture' %}
+                            {{ "%.2f"|format(o.amount_kg) }} kg CO₂e
+                        {% else %}
+                            {{ "%.4f"|format(o.tree_reclaimed_kg) }} kg CO₂e ({{ o.tree_count }} trees)
+                        {% endif %}
+                    </span>
+                </div>
+                {% if o.reference_number %}
+                <small>Ref: {{ o.reference_number }} · Purchased: {{ o.purchase_date[:10] if o.purchase_date else '—' }}</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <!-- Comparison chart -->
     <div class="sustain-section">
         <h2>Ecolyxis vs Cloud</h2>
