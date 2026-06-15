@@ -128,6 +128,12 @@ class Message(db.Model):
     reasoning_tokens = db.Column(db.Integer, nullable=True)
     message_type = db.Column(db.String(10), default="text", nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # Sustainability tracking: real GPU energy consumed for this message (Wh).
+    # Populated by the GPU worker from nvidia-smi power samples during inference.
+    # NULL for legacy messages (estimated from token counts at query time).
+    energy_wh = db.Column(db.Float, nullable=True)
+    # CO₂e in grams for this message, computed from energy_wh at generation time.
+    co2e_g = db.Column(db.Float, nullable=True)
 
 
 class WebAuthnCredential(db.Model):

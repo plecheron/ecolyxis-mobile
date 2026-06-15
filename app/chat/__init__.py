@@ -11,7 +11,7 @@ from app import db
 from app.models import Thread, Message, GeneratedImage, GeneratedVideo
 from app.llm import LLMClient
 
-UPLOAD_FOLDER = "/opt/Ecolyxis/uploads"
+UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/opt/Ecolyxis/uploads")
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 

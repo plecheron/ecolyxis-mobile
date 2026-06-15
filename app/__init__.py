@@ -71,6 +71,7 @@ def create_app(test_config=None):
     from app.sharing import share_bp
     from app.analytics import analytics_bp
     from app.models_selector import models_selector_bp
+    from app.sustainability import sustainability_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dash_bp)
@@ -90,6 +91,7 @@ def create_app(test_config=None):
     app.register_blueprint(share_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(models_selector_bp)
+    app.register_blueprint(sustainability_bp)
 
 
     # Security headers (#116)

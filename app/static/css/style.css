@@ -21,6 +21,70 @@
     --sidebar-width: 280px;
 }
 
+/* ===== Light Theme Override ===== */
+/* Activated via data-theme="light" attribute on <html>, or automatically
+   via prefers-color-scheme when no explicit preference is stored. */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        --bg: #f6f8fa;
+        --bg-card: #ffffff;
+        --bg-sidebar: #f0f2f5;
+        --bg-secondary: #ffffff;
+        --bg-input: #e9eaee;
+        --bg-primary: #ffffff;
+        --text: #1f2328;
+        --text-secondary: #424a53;
+        --text-muted: #636c76;
+        --green-primary: #1a7f37;
+        --green-hover: #16834a;
+        --primary: #2da44e;
+        --primary-hover: #218838;
+        --accent: #0969da;
+        --danger: #cf222e;
+        --border: #d0d7de;
+        --border-color: #d8dee4;
+    }
+}
+
+:root[data-theme="light"] {
+    --bg: #f6f8fa;
+    --bg-card: #ffffff;
+    --bg-sidebar: #f0f2f5;
+    --bg-secondary: #ffffff;
+    --bg-input: #e9eaee;
+    --bg-primary: #ffffff;
+    --text: #1f2328;
+    --text-secondary: #424a53;
+    --text-muted: #636c76;
+    --green-primary: #1a7f37;
+    --green-hover: #16834a;
+    --primary: #2da44e;
+    --primary-hover: #218838;
+    --accent: #0969da;
+    --danger: #cf222e;
+    --border: #d0d7de;
+    --border-color: #d8dee4;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text);
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.theme-toggle:hover { border-color: var(--text-muted); }
+.theme-toggle .theme-icon-dark { display: none; }
+:root[data-theme="light"] .theme-toggle .theme-icon-dark { display: inline; }
+:root[data-theme="light"] .theme-toggle .theme-icon-light { display: none; }
+
 /* ===== Reset & Base ===== */
 *, *::before, *::after {
     margin: 0;
