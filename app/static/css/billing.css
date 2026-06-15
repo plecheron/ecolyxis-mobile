@@ -46,7 +46,7 @@
     border-radius: 20px;
 }
 .status-canceling {
-    color: #e67e22;
+    color: var(--warning);
     font-size: 0.9rem;
     background: rgba(230, 126, 34, 0.15);
     padding: 4px 12px;
@@ -100,7 +100,7 @@
     top: -10px;
     right: 16px;
     background: var(--green-primary);
-    color: #fff;
+    color: var(--on-primary);
     font-size: 0.75rem;
     font-weight: 600;
     padding: 4px 12px;
@@ -132,7 +132,7 @@
 }
 .billing-cancel-notice p {
     margin: 0;
-    color: #e74c3c;
+    color: var(--danger);
     font-size: 0.9rem;
 }
 .billing-cancel-sub {
@@ -260,7 +260,7 @@
 /* Sale badge */
 .sale-badge {
   display: inline-block;
-  background: linear-gradient(135deg, #f39c12, #e74c3c);
+  background: linear-gradient(135deg, var(--warning), var(--danger));
   color: white;
   padding: 3px 10px;
   border-radius: 12px;

@@ -78,8 +78,8 @@ body.admin-page {
 }
 
 .sidebar-link.active {
-  color: var(--accent, #27ae60);
-  border-left-color: var(--accent, #27ae60);
+  color: var(--accent, var(--green-hover));
+  border-left-color: var(--accent, var(--green-hover));
   background: rgba(39,174,96,0.08);
   font-weight: 600;
 }
@@ -103,7 +103,7 @@ body.admin-page {
 }
 
 .sidebar-back:hover {
-  color: var(--accent, #27ae60);
+  color: var(--accent, var(--green-hover));
 }
 
 /* ── Main Content ───────────────────────────────────────────────── */
@@ -182,18 +182,18 @@ body.admin-page {
   left: 2px;
   width: 14px;
   height: 14px;
-  background: #888;
+  background: var(--text-muted);
   border-radius: 50%;
   transition: all 0.2s;
 }
 
 .auto-refresh-toggle input:checked + .toggle-switch {
-  background: var(--accent, #27ae60);
+  background: var(--accent, var(--green-hover));
 }
 
 .auto-refresh-toggle input:checked + .toggle-switch::after {
   left: 18px;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .toggle-label {
@@ -255,7 +255,7 @@ body.admin-page {
 }
 
 .stat-card.highlight {
-  border-left: 3px solid var(--accent, #27ae60);
+  border-left: 3px solid var(--accent, var(--green-hover));
 }
 
 .stat-label {
@@ -323,12 +323,12 @@ body.admin-page {
   display: inline-block;
 }
 
-.status-ok .status-dot { background: #27ae60; box-shadow: 0 0 6px #27ae6080; }
-.status-ok { color: #27ae60; }
-.status-warn .status-dot { background: #f39c12; }
-.status-warn { color: #f39c12; }
-.status-err .status-dot { background: #e74c3c; }
-.status-err { color: #e74c3c; }
+.status-ok .status-dot { background: var(--green-hover); box-shadow: 0 0 6px var(--green-hover)80; }
+.status-ok { color: var(--green-hover); }
+.status-warn .status-dot { background: var(--warning); }
+.status-warn { color: var(--warning); }
+.status-err .status-dot { background: var(--danger); }
+.status-err { color: var(--danger); }
 
 .admin-meta {
   margin-top: 10px;
@@ -400,9 +400,9 @@ body.admin-page {
 }
 
 .chart-tab.active {
-  background: var(--accent, #27ae60);
-  border-color: var(--accent, #27ae60);
-  color: #fff;
+  background: var(--accent, var(--green-hover));
+  border-color: var(--accent, var(--green-hover));
+  color: var(--on-primary);
 }
 
 /* ── Tables ─────────────────────────────────────────────────────── */
@@ -473,12 +473,12 @@ body.admin-page {
 
 .tier-premium {
   background: rgba(39,174,96,0.15);
-  color: #27ae60;
+  color: var(--green-hover);
 }
 
 /* Role badges */
 .role-user {
-  color: var(--accent, #27ae60);
+  color: var(--accent, var(--green-hover));
   font-weight: 600;
 }
 
@@ -497,14 +497,14 @@ body.admin-page {
 }
 
 .live-dot.live-on {
-  background: #27ae60;
-  box-shadow: 0 0 6px #27ae60, 0 0 12px #27ae6080;
+  background: var(--green-hover);
+  box-shadow: 0 0 6px var(--green-hover), 0 0 12px var(--green-hover)80;
   animation: live-pulse 2s ease-in-out infinite;
 }
 
 .live-dot.live-off {
-  background: #e74c3c;
-  box-shadow: 0 0 4px #e74c3c;
+  background: var(--danger);
+  box-shadow: 0 0 4px var(--danger);
 }
 
 @keyframes live-pulse {
@@ -514,10 +514,10 @@ body.admin-page {
 
 /* Error highlight */
 .error-highlight {
-  border-left: 3px solid #e74c3c !important;
+  border-left: 3px solid var(--danger) !important;
 }
 .error-highlight .stat-value {
-  color: #e74c3c;
+  color: var(--danger);
 }
 
 /* ── Footer ─────────────────────────────────────────────────────── */
@@ -530,7 +530,7 @@ body.admin-page {
 }
 
 .admin-footer a {
-  color: var(--accent, #27ae60);
+  color: var(--accent, var(--green-hover));
   text-decoration: none;
 }
 
@@ -670,8 +670,8 @@ body.admin-page {
   gap: 8px;
 }
 .btn-bulk-delete {
-  background: #e74c3c;
-  color: #fff;
+  background: var(--danger);
+  color: var(--on-primary);
   border: none;
   padding: 8px 16px;
   border-radius: 8px;
@@ -681,7 +681,7 @@ body.admin-page {
   transition: background 0.2s;
 }
 .btn-bulk-delete:hover {
-  background: #c0392b;
+  background: var(--danger-hover);
 }
 .btn-bulk-cancel {
   background: var(--border, #2a2a3e);
@@ -698,7 +698,7 @@ body.admin-page {
 
 /* Thread card selection state */
 .thread-card.selected {
-  border-color: #27ae60;
+  border-color: var(--green-hover);
   box-shadow: 0 0 0 2px rgba(39,174,96,0.3);
 }
 .thread-card .thread-checkbox {
@@ -709,7 +709,7 @@ body.admin-page {
   height: 22px;
   cursor: pointer;
   display: none;
-  accent-color: #27ae60;
+  accent-color: var(--green-hover);
 }
 .thread-card.selectable .thread-checkbox {
   display: block;
@@ -731,9 +731,9 @@ body.admin-page {
   background: var(--border, #2a2a3e);
 }
 .thread-select-btn.active {
-  background: #27ae60;
-  border-color: #27ae60;
-  color: #fff;
+  background: var(--green-hover);
+  border-color: var(--green-hover);
+  color: var(--on-primary);
 }
 
 /* Better table scrolling on mobile */

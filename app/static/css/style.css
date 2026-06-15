@@ -14,9 +14,13 @@
     --primary: #2ea44f;
     --primary-hover: #3fb950;
     --accent: #58a6ff;
+    --accent-secondary: #a78bfa;
     --danger: #f85149;
+    --danger-hover: #c0392b;
+    --warning: #f0ad4e;
     --border: #30363d;
     --border-color: #333;
+    --on-primary: #ffffff;
     --radius: 8px;
     --sidebar-width: 280px;
 }
@@ -40,9 +44,13 @@
         --primary: #2da44e;
         --primary-hover: #218838;
         --accent: #0969da;
+        --accent-secondary: #7c3aed;
         --danger: #cf222e;
+        --danger-hover: #a40c1a;
+        --warning: #bf8700;
         --border: #d0d7de;
         --border-color: #d8dee4;
+        --on-primary: #ffffff;
     }
 }
 
@@ -61,9 +69,13 @@
     --primary: #2da44e;
     --primary-hover: #218838;
     --accent: #0969da;
+    --accent-secondary: #7c3aed;
     --danger: #cf222e;
+    --danger-hover: #a40c1a;
+    --warning: #bf8700;
     --border: #d0d7de;
     --border-color: #d8dee4;
+    --on-primary: #ffffff;
 }
 
 /* Theme toggle button */
@@ -132,7 +144,7 @@ a:hover {
 }
 .btn-primary {
     background: var(--primary);
-    color: #fff;
+    color: var(--on-primary);
 }
 .btn-primary:hover {
     background: var(--primary-hover);
@@ -620,14 +632,14 @@ a:hover {
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--on-primary);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     pointer-events: auto;
     animation: toastIn 0.25s ease-out;
     max-width: 360px;
 }
 .toast.toast-success { background: var(--accent, #2ea44f); }
-.toast.toast-error { background: #dc3545; }
+.toast.toast-error { background: var(--danger); }
 .toast.toast-info { background: var(--bg-secondary, #161b22); border: 1px solid var(--border); }
 @keyframes toastIn {
     from { transform: translateX(100%); opacity: 0; }
@@ -1206,7 +1218,7 @@ a:hover {
 
 /* Token Warning/Danger */
 .message-tokens-warning .message-content {
-    border-left: 3px solid #f0ad4e;
+    border-left: 3px solid var(--warning);
 }
 .message-tokens-danger .message-content {
     border-left: 3px solid var(--danger);
@@ -1299,7 +1311,7 @@ a:hover {
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    color: #fff;
+    color: var(--on-primary);
     width: 32px;
     height: 32px;
     display: flex;
@@ -1307,7 +1319,7 @@ a:hover {
     transition: background 0.2s;
 }
 #stop-btn:hover {
-    background: #c0392b;
+    background: var(--danger-hover);
 }
 #stop-btn svg {
     width: 16px;
@@ -1430,7 +1442,7 @@ a:hover {
     stroke-linecap: round;
 }
 .context-ring-fill.warn {
-    stroke: #f0ad4e;
+    stroke: var(--warning);
 }
 .context-ring-fill.danger {
     stroke: var(--danger);
@@ -1445,7 +1457,7 @@ a:hover {
     color: var(--text-muted);
     pointer-events: none;
 }
-.context-pct.warn { color: #f0ad4e; }
+.context-pct.warn { color: var(--warning); }
 .context-pct.danger { color: var(--danger); }
 
 /* Context Menu */
@@ -1542,7 +1554,7 @@ a:hover {
     height: 18px;
     border-radius: 50%;
     background: var(--danger);
-    color: #fff;
+    color: var(--on-primary);
     border: none;
     font-size: 10px;
     cursor: pointer;
@@ -1627,7 +1639,7 @@ a:hover {
 #send-btn svg {
     width: 16px;
     height: 16px;
-    stroke: #fff;
+    stroke: var(--on-primary);
 }
 
 /* Message Images */
@@ -1704,7 +1716,7 @@ a:hover {
     left: 0;
     right: 0;
     background: rgba(248, 81, 73, 0.9);
-    color: #fff;
+    color: var(--on-primary);
     text-align: center;
     padding: 8px;
     font-size: 0.85rem;
@@ -1717,7 +1729,7 @@ a:hover {
     width: 16px;
     height: 16px;
     border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff;
+    border-top-color: var(--on-primary);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
     vertical-align: middle;
@@ -2069,24 +2081,24 @@ a:hover {
     justify-content: center; z-index: 1000;
 }
 .modal-card {
-    background: #1e1e2e; border-radius: 12px; width: 90%; max-width: 420px;
+    background: var(--bg-card); border-radius: 12px; width: 90%; max-width: 420px;
     padding: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .modal-header h3 { margin: 0; }
-.modal-close { background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer; }
+.modal-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; }
 .modal-body h4 { margin: 0 0 8px; }
 .webauthn-device {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 12px; background: #2a2a3e; border-radius: 8px; margin-bottom: 8px;
+    padding: 10px 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px;
 }
 .webauthn-device-name { font-size: 14px; }
-.webauthn-device-date { font-size: 11px; color: #888; }
-.webauthn-device button { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 16px; }
+.webauthn-device-date { font-size: 11px; color: var(--text-muted); }
+.webauthn-device button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 16px; }
 
 /* ===== Utility Classes ===== */
-.text-muted-sm { color: #aaa; font-size: 13px; margin-bottom: 12px; }
-.text-error { color: #e74c3c; }
+.text-muted-sm { color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
+.text-error { color: var(--danger); }
 .mt-sm { margin-top: 12px; }
 .mb-xs { margin-bottom: 4px; }
 
@@ -2104,7 +2116,7 @@ a:hover {
 }
 .btn-upscale {
     background: var(--accent, #6366f1);
-    color: #fff;
+    color: var(--on-primary);
     border: none;
     padding: 6px 14px;
     border-radius: 6px;
@@ -2306,7 +2318,7 @@ a:hover {
 }
 
 .ws-context-menu-item.danger {
-    color: #e74c3c;
+    color: var(--danger);
 }
 
 /* Create workspace modal */
@@ -2365,7 +2377,7 @@ a:hover {
     padding: 2px 8px;
     border-radius: 10px;
     background: rgba(139, 92, 246, 0.15);
-    color: #a78bfa;
+    color: var(--accent-secondary);
     font-size: 0.72rem;
     font-weight: 500;
     white-space: nowrap;
@@ -2380,7 +2392,7 @@ a:hover {
 .delete-chat-btn {
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -2388,7 +2400,7 @@ a:hover {
     align-items: center;
 }
 .delete-chat-btn:hover {
-    color: #ef4444;
+    color: var(--danger);
     background: rgba(239,68,68,0.1);
 }
 
