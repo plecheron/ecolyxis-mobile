@@ -1,4 +1,64 @@
 # Changelog
+## v0.8.0-beta (2026-06-16) — "Mission Control"
+
+### Main App (ecolyxis)
+
+#### Carbon Offsets & Sustainability
+- **Carbon offset tracking**: Log carbon capture purchases (e.g., 1 tonne CO₂e DAC)
+  and tree planting events. CO₂ reclaimed shown separately from savings on
+  all display surfaces (landing page, sustainability dashboard, API).
+- **Tree calculation**: Conservative 21 kg CO₂/year per tree (EPA/UK forestry avg),
+  live from purchase date, capped at 40-year lifetime (840 kg/tree).
+- **Carbon capture**: Full amount recognized immediately at purchase.
+- **Migration 012**: `carbon_offset` table for offset records.
+- **Migration 013**: `is_banned` column on User table.
+
+#### Admin Integration
+- **Feature flags**: `admin_integration.py` reads from `admin_feature_flag` table
+  with 30-second in-process cache. `@feature_required` decorator gates routes.
+- **Ban enforcement**: Before-request hook checks `is_banned` on authenticated
+  users, logs them out and redirects with flash message. Exempt paths configured.
+- **Audit webhook**: `/admin/audit-ingest` endpoint receives events from the
+  admin dashboard, authenticated via `ADMIN_AUDIT_KEY` env var.
+
+#### Code Quality
+- Fixed `test_v061_beta.py`: Replaced hardcoded `/opt/Ecolyxis` paths with
+  `REPO_ROOT`-relative paths for portable local testing.
+- 8 new admin integration tests (feature flags, ban check, audit endpoint,
+  CarbonOffset model). Total: 664 passing + 44 admin dashboard tests.
+
+### Admin Dashboard (ecolyxis-admin) — "Mission Control"
+
+#### Already at v0.9.0-beta on GitHub (`plecheron/ecolyxis-admin`)
+
+**Tier 1 — Foundation & Security:**
+- Session-based auth with 2FA (TOTP + backup codes)
+- CSRF protection (Flask-WTF)
+- Rate limiting (Flask-Limiter)
+- IP allowlist support
+- Secret extraction to `.env` (python-dotenv)
+- SSH connection pooling (ControlMaster)
+- HTTPS via Caddy at `admin.ecolyxis.co.uk`
+
+**Tier 2 — Infrastructure Control:**
+- Remote service management (start/stop/restart across all VMs)
+- VM management via KVM/virsh (start/stop/force-off)
+- Deploy pipeline (pull, migrate, restart, smoke test, rollback)
+- Log viewer (journalctl tail + live SSE streaming)
+- Backup management (status, manual trigger, history)
+
+**Tier 3 — Application Management:**
+- User management (view, ban/unban, change tier, reset password)
+- Sustainability dashboard integration (energy/CO₂e from GPU telemetry)
+- Feature flags (toggle features without redeploying)
+- Alert notifications (Telegram, webhook, email)
+- Uptime Kuma integration
+- Tests runner (remote pytest via SSH)
+- Auto-remediation (disk cleanup, service restart)
+- Prometheus export endpoint
+- Carbon offset CRUD management
+- WireGuard topology viewer
+
 ## v0.5.0-beta (2026-06-13)
 
 ### Tier 1 — DB Hardening
