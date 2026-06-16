@@ -12,6 +12,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.models import Thread, Message, Workspace
+from app.sustainability import archive_message_energy
 from app.llm import get_workspace_context
 from app.utils.tokens import count_tokens, WORKSPACE_CONTEXT_BUDGET
 from app.chat import (
@@ -162,6 +163,7 @@ def delete_message(thread_id, message_id):
     """Delete a single message from a thread."""
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
     msg = Message.query.filter_by(id=message_id, thread_id=thread.id).first_or_404()
+    archive_message_energy(message_ids=[message_id], reason="delete")
     db.session.delete(msg)
     db.session.commit()
     return ("", 204)
@@ -242,6 +244,7 @@ def compact_thread(thread_id):
 
             # Server-side save — no client confirmation needed
             with _app.app_context():
+                archive_message_energy(thread_id=_thread_id, reason="compact")
                 Message.query.filter_by(thread_id=_thread_id).delete()
                 user_summary = Message(
                     thread_id=_thread_id,
@@ -380,6 +383,7 @@ def compact_progressive(thread_id):
 def clear_thread(thread_id):
     """Delete all messages in a thread."""
     thread = Thread.query.filter_by(id=thread_id, user_id=current_user.id).first_or_404()
+    archive_message_energy(thread_id=thread.id, reason="clear")
     Message.query.filter_by(thread_id=thread.id).delete()
     db.session.commit()
     return {"status": "ok"}
@@ -426,6 +430,7 @@ def compact_save(thread_id):
         )
         db.session.add(assistant_summary)
     else:
+        archive_message_energy(thread_id=thread.id, reason="compact_save")
         Message.query.filter_by(thread_id=thread.id).delete()
         user_summary = Message(
             thread_id=thread.id,

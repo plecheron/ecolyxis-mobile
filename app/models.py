@@ -137,6 +137,22 @@ class Message(db.Model):
     co2e_g = db.Column(db.Float, nullable=True)
 
 
+class EnergyLedger(db.Model):
+    """Permanent record of energy consumed by messages that have been deleted.
+
+    When messages are removed (single delete, clear thread, compact, or cascade
+    from thread deletion), their energy data is archived here so sustainability
+    counters never decrease.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    energy_wh = db.Column(db.Float, nullable=False, default=0.0)
+    co2e_g = db.Column(db.Float, nullable=False, default=0.0)
+    message_count = db.Column(db.Integer, nullable=False, default=0)
+    user_id = db.Column(db.Integer, nullable=True)  # nullable in case user deleted too
+    reason = db.Column(db.String(30), nullable=False, default="delete")
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class WebAuthnCredential(db.Model):
     """Stored FIDO2/WebAuthn credential for passwordless/biometric login."""
     id = db.Column(db.Integer, primary_key=True)

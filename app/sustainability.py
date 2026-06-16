@@ -193,9 +193,69 @@ def _get_reclaimed_data():
 
 # ── Aggregation queries ─────────────────────────────────────────────────────
 
+
+def archive_message_energy(message_ids=None, thread_id=None, reason="delete"):
+    """Archive energy data from messages about to be deleted.
+
+    Call this BEFORE deleting messages so their energy contribution is
+    preserved permanently in the EnergyLedger. Accepts either a list of
+    message IDs or a thread_id (archives all messages in that thread).
+    """
+    from app.models import EnergyLedger
+
+    q = db.session.query(
+        func.sum(func.coalesce(Message.energy_wh, 0)
+                 + (func.coalesce(Message.tokens_used, 0)
+                    + func.coalesce(Message.reasoning_tokens, 0))
+                 * WH_PER_TOKEN_FALLBACK * (Message.energy_wh.is_(None)).cast(db.Integer)
+                ).label("total_energy"),
+        func.sum(Message.co2e_g).label("total_co2e"),
+        func.count(Message.id).label("msg_count"),
+    ).filter(Message.role == "assistant")
+
+    if thread_id is not None:
+        q = q.filter(Message.thread_id == str(thread_id))
+        user_id = db.session.query(Thread.user_id).filter_by(id=str(thread_id)).scalar()
+    elif message_ids is not None:
+        q = q.filter(Message.id.in_(message_ids))
+        user_id = db.session.query(Thread.user_id).join(
+            Message, Message.thread_id == Thread.id
+        ).filter(Message.id.in_(message_ids)).first()
+        user_id = user_id[0] if user_id else None
+    else:
+        return  # nothing to archive
+
+    row = q.one()
+    if row.msg_count == 0:
+        return
+
+    ledger = EnergyLedger(
+        energy_wh=round(row.total_energy or 0, 6),
+        co2e_g=round(row.total_co2e or 0, 4),
+        message_count=row.msg_count,
+        user_id=user_id,
+        reason=reason,
+    )
+    db.session.add(ledger)
+
+
+def _get_ledger_totals(user_id=None):
+    """Get archived energy from deleted messages."""
+    from app.models import EnergyLedger
+    q = db.session.query(
+        func.coalesce(func.sum(EnergyLedger.energy_wh), 0),
+        func.coalesce(func.sum(EnergyLedger.co2e_g), 0),
+    )
+    if user_id is not None:
+        q = q.filter(EnergyLedger.user_id == user_id)
+    row = q.one()
+    return row[0] or 0.0, row[1] or 0.0
+
+
 def _get_user_energy(user_id):
     """Get total energy consumed by a user's messages (Wh).
 
+    Includes archived energy from deleted messages (EnergyLedger).
     Uses stored energy_wh where available; falls back to token-based estimate.
     """
     # Messages with real energy data
@@ -224,7 +284,10 @@ def _get_user_energy(user_id):
         .scalar()
     ) or 0
 
-    return real + (estimated * WH_PER_TOKEN_FALLBACK)
+    # Archived energy from deleted messages
+    ledger_energy, _ = _get_ledger_totals(user_id)
+
+    return real + (estimated * WH_PER_TOKEN_FALLBACK) + ledger_energy
 
 
 def _get_user_messages_count(user_id):
@@ -238,7 +301,10 @@ def _get_user_messages_count(user_id):
 
 
 def _get_site_wide_energy():
-    """Get total energy consumed across all messages (Wh)."""
+    """Get total energy consumed across all messages (Wh).
+
+    Includes archived energy from deleted messages (EnergyLedger).
+    """
     real = (
         db.session.query(func.sum(Message.energy_wh))
         .filter(Message.energy_wh.isnot(None))
@@ -260,7 +326,10 @@ def _get_site_wide_energy():
         .scalar()
     ) or 0
 
-    return real + (estimated_tokens * WH_PER_TOKEN_FALLBACK)
+    # Archived energy from deleted messages
+    ledger_energy, _ = _get_ledger_totals()
+
+    return real + (estimated_tokens * WH_PER_TOKEN_FALLBACK) + ledger_energy
 
 
 def _get_site_wide_user_count():
