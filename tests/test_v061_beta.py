@@ -3,7 +3,9 @@
 Covers: #115, #118, #120, #122, #124, #131, #134, #135, #138, #139,
         #140, #154, #155, #157, #158, #159
 """
+import os
 import pytest
+REPO_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 from app.models import User, Thread, Message, GenerationJob, SharedLink
 from datetime import datetime, timezone
 import time
@@ -183,7 +185,7 @@ class TestWorkspaceModalValidation:
 
     def test_ws_modal_disabled_css(self):
         """CSS should have the disabled workspace modal button style."""
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert ".ws-modal .btn-primary:disabled" in css
 
@@ -288,12 +290,12 @@ class TestMobileSidebar:
     """Issue #139: Mobile sidebar should have shadow and body scroll lock."""
 
     def test_sidebar_shadow_css(self):
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert "box-shadow" in css and "sidebar.open" in css
 
     def test_body_scroll_lock_css(self):
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert "overflow: hidden" in css
 
@@ -313,7 +315,7 @@ class TestBillingInlineStyles:
         assert "billing-api-row" in html or "billing-api-credits" in html
 
     def test_billing_css_classes_exist(self):
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert ".billing-api-row" in css
 
@@ -326,17 +328,17 @@ class TestToastSystem:
     """Issue #154: Toast notification system."""
 
     def test_base_has_toast_container(self):
-        with open("/opt/Ecolyxis/app/templates/base.html") as f:
+        with open(os.path.join(REPO_ROOT, "app/templates/base.html")) as f:
             html = f.read()
         assert "toast-container" in html
 
     def test_base_has_show_toast_js(self):
-        with open("/opt/Ecolyxis/app/templates/base.html") as f:
+        with open(os.path.join(REPO_ROOT, "app/templates/base.html")) as f:
             html = f.read()
         assert "showToast" in html
 
     def test_toast_css_exists(self):
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert ".toast-container" in css
         assert "toastOut" in css
@@ -350,7 +352,7 @@ class TestLoadingSkeletons:
     """Issue #155: Loading skeleton CSS."""
 
     def test_skeleton_css_exists(self):
-        with open("/opt/Ecolyxis/app/static/css/style.css") as f:
+        with open(os.path.join(REPO_ROOT, "app/static/css/style.css")) as f:
             css = f.read()
         assert ".skeleton" in css
         assert "shimmer" in css
@@ -367,7 +369,7 @@ class TestSQLAlchemyDeprecation:
         """App code should use db.session.get() not Query.get()."""
         import os
         violations = []
-        for root, dirs, files in os.walk("/opt/Ecolyxis/app"):
+        for root, dirs, files in os.walk(os.path.join(REPO_ROOT, "app")):
             for fname in files:
                 if not fname.endswith(".py"):
                     continue
@@ -428,7 +430,7 @@ class TestShareRevocationAuth:
 
     def test_revoke_checks_ownership_in_code(self, app):
         """Verify the revoke endpoint has an ownership check."""
-        with open("/opt/Ecolyxis/app/sharing.py") as f:
+        with open(os.path.join(REPO_ROOT, "app/sharing.py")) as f:
             code = f.read()
         assert "link.user_id != current_user.id" in code
 
