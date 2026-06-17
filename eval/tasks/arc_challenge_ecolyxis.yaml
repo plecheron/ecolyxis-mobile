@@ -1,0 +1,24 @@
+task: arc_challenge_ecolyxis
+dataset_path: allenai/ai2_arc
+dataset_name: ARC-Challenge
+output_type: multiple_choice
+training_split: train
+validation_split: validation
+test_split: test
+doc_to_text: "Question: {{question}}\nChoices:\nA) {{choices[label='A']}}\nB) {{choices[label='B']}}\nC) {{choices[label='C']}}\nD) {{choices[label='D']}}\nAnswer:"
+doc_to_target: "{{choices[label]}}"
+doc_to_choice: "{{[choices[label='A'], choices[label='B'], choices[label='C'], choices[label='D']]}}"
+should_decontaminate: true
+process_results: !function utils.extract_letter_answer
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    filter_list:
+      - name: extract_letter
+        filter:
+          - function: !function utils.extract_letter
+            filter_kwargs:
+              choices: "ABCD"
+metadata:
+  version: 1.0
