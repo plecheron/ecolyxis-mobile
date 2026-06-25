@@ -36,35 +36,49 @@ logger = logging.getLogger('ecolyxis.sprint')
 # Constants
 # ---------------------------------------------------------------------------
 
-# Sprint system prompt — kept simple for a 0.8B model
+# Sprint system prompt — for the Qwen3.6-35B-A3B conductor model
 SPRINT_SYSTEM_PROMPT = """\
-You are Sprint, the fast assistant for Ecolyxis. You answer users directly and quickly.
+You are Sprint, the fast assistant for Ecolyxis.
 
-You have specialised knowledge experts available. You MUST consult the relevant expert BEFORE answering any question that involves specialist topics. Do NOT rely on your own knowledge for specialist questions — your training data may be inaccurate or outdated. Instead, ask the expert first, then use their answer.
-
-To consult an expert, write:
-
-«expert:EXPERT_NAME»
-Your natural language question here.
-«/expert»
-
-Wait for the expert's answer, then continue your response using their information.
+## Experts
+You have specialised knowledge experts. For ANY factual question that falls within an expert's domain, you MUST consult that expert BEFORE writing your answer. Your own knowledge about specialist topics is unreliable — you will hallucinate episode names, character details, and lore. Always verify with the expert first.
 
 {expert_descriptions}
 
-For general conversation (greetings, opinions, simple help) you can answer directly without an expert.
+## How to consult an expert
+Write a block with the expert's name, then your question:
 
-After finishing your response, review it for accuracy. If you are confident, end with «proceed» on its own line. If you are unsure about something specific, request guidance:
+«expert:ds9»
+What is the name of the 5th episode of Deep Space Nine Season 1?
+«/expert»
+
+Generation pauses. The expert retrieves the answer. You then continue writing your response using that information.
+
+## Example
+
+User: What species is Odo?
+Sprint: «expert:ds9»
+What species is Odo in Deep Space Nine?
+«/expert»
+
+[Expert returns: Odo is a Changeling, a shapeshifter from the Gamma Quadrant...]
+
+Odo is a **Changeling** — a shapeshifting being from the Gamma Quadrant. He is one of the Founders of the Dominion, though he rejected that heritage to live among solids on Deep Space Nine.
+«proceed»
+
+## Self-check
+After your full response, output «proceed» on its own line to confirm it is accurate.
+If you realise you forgot to consult an expert, or your answer contains contradictions, or you are unsure of specific facts, output:
 
 «escalate»
 Describe what you are unsure about.
 «/escalate»
 
-Rules:
-- ALWAYS consult an expert for factual questions about their domain
-- Never fabricate facts — ask an expert if unsure
-- Keep responses concise and friendly
-- You can consult the same expert multiple times with different questions
+## Rules
+- CONSULT THE EXPERT FIRST for any question touching their domain. Do not answer from memory.
+- Greetings, opinions, coding help, and general chat do not need an expert.
+- You may consult an expert multiple times in one response with different questions.
+- Never fabricate facts. If the expert has no answer, say so honestly.
 """
 
 # Stop sequences for the LLM — we pause generation when these appear
@@ -147,16 +161,21 @@ class SprintClient:
         except Exception as e:
             logger.warning("Variant switch failed: %s — proceeding anyway", e)
 
-    def generate(self, messages, stop=None):
-        """Non-streaming generation. Returns the full text."""
+    def generate(self, messages, stop=None, enable_thinking=True, timeout=300,
+                 max_tokens=None):
+        """Non-streaming generation. Returns the full text.
+
+        Thinking is enabled by default (used for self-check / escalation).
+        Timeout defaults to 300s — thinking mode on large models is slow.
+        """
         self._ensure_variant()
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens or self.max_tokens,
             "temperature": 0.7,
             "stream": False,
-            "chat_template_kwargs": {"enable_thinking": False},
+            "chat_template_kwargs": {"enable_thinking": enable_thinking},
         }
         if stop:
             payload["stop"] = stop
@@ -164,16 +183,21 @@ class SprintClient:
         resp = requests.post(
             f"{self.base_url}/chat/completions",
             json=payload,
-            timeout=120,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
+        # Strip thinking blocks from non-streaming responses
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        return content
 
     def generate_stream(self, messages, stop=None):
         """Streaming generation. Yields (text_delta, token_count) tuples.
 
         The token_count tracks cumulative tokens for progress display.
+        Thinking is DISABLED here because stop sequences must work
+        reliably for the orchestration loop (they trigger inside <think>).
         """
         self._ensure_variant()
         payload = {
@@ -197,6 +221,8 @@ class SprintClient:
         resp.raise_for_status()
 
         token_count = 0
+        in_thinking = False
+        buffer = ""
         for raw_line in resp.iter_lines():
             if not raw_line:
                 continue
@@ -214,16 +240,49 @@ class SprintClient:
                     continue
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
                 content = delta.get("content") or ""
-                if content:
-                    token_count += 1  # approximate
-                    yield content, token_count
+                if not content:
+                    continue
+                token_count += 1  # approximate
+
+                # Strip thinking tokens: everything between <think> and </think>
+                buffer += content
+                while buffer:
+                    if in_thinking:
+                        end_idx = buffer.find("</think>")
+                        if end_idx != -1:
+                            buffer = buffer[end_idx + 8:]
+                            in_thinking = False
+                        else:
+                            buffer = ""  # still inside thinking, discard
+                            break
+                    else:
+                        start_idx = buffer.find("<think>")
+                        if start_idx != -1:
+                            if start_idx > 0:
+                                yield buffer[:start_idx], token_count
+                            buffer = buffer[start_idx + 7:]
+                            in_thinking = True
+                        else:
+                            # Check for partial <think at end of buffer
+                            if "<think" in buffer and buffer.rstrip() == buffer[buffer.rfind("<think"):]:
+                                safe = buffer[:buffer.rfind("<think")]
+                                if safe:
+                                    yield safe, token_count
+                                break
+                            else:
+                                yield buffer, token_count
+                                buffer = ""
+                                break
             except json.JSONDecodeError:
                 continue
+
+        # Flush remaining buffer after stream ends
+        if buffer and not in_thinking:
+            yield buffer, token_count
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator
-# ---------------------------------------------------------------------------
 
 class SprintOrchestrator:
     """Manages the Sprint generation loop: generate → intercept blocks →
@@ -403,12 +462,51 @@ class SprintOrchestrator:
                 # If we hit «proceed», Sprint already self-checked and passed
                 if hit_proceed:
                     self_check_passed = True
-                else:
-                    # Generation finished without «proceed» — run explicit self-check
-                    self_check_passed = self._run_self_check(
-                        messages, accumulated, on_event
-                    )
+                    break
 
+                # Generation finished without «proceed» — run explicit self-check
+                check_passed = self._run_self_check(
+                    messages, accumulated, on_event
+                )
+
+                if check_passed:
+                    self_check_passed = True
+                    break
+
+                # Self-check FAILED — try to extract the concern and escalate
+                self_check_passed = False
+
+                # Parse the self-check response for a concern
+                check_concern = self._extract_check_concern(accumulated, messages)
+
+                if self.escalation_client and check_concern and not escalated:
+                    if on_event:
+                        on_event({"type": "escalate_start"})
+
+                    guidance = self._request_escalation(check_concern, conversation_messages)
+
+                    if guidance:
+                        escalated = True
+                        escalation_guidance = guidance
+
+                        if on_event:
+                            on_event({"type": "escalate_done", "guidance": guidance})
+
+                        # Tell Sprint to re-answer using the guidance
+                        guidance_msg = (
+                            f"\n«guidance from Standard»\n{guidance}\n«/guidance»\n\n"
+                            f"Re-answer the user's question using this guidance. "
+                            f"If the guidance contradicts your expert results, trust the guidance. "
+                            f"End with «proceed»."
+                        )
+                        messages.append({"role": "assistant", "content": accumulated})
+                        messages.append({"role": "user", "content": guidance_msg})
+                        accumulated = ""  # reset for re-generation
+                        continue
+                    else:
+                        if on_event:
+                            on_event({"type": "escalate_done", "guidance": None})
+                # Can't escalate — deliver best effort
                 break
 
         # Clean up the accumulated text
@@ -511,12 +609,22 @@ class SprintOrchestrator:
         """Run an explicit self-check on the draft.
 
         Returns True if Sprint confirms the answer is good.
+
+        Uses thinking mode WITHOUT stop sequences — stop sequences trigger
+        inside <think> blocks. Instead, we let the model generate fully,
+        strip thinking, then check the visible output for markers.
         """
         check_prompt = (
-            "Review your response above for accuracy. "
-            "If everything is correct, respond with ONLY «proceed».\n"
-            "If you are unsure about something specific, respond with:\n"
-            "«escalate»\nYour concern\n«/escalate»"
+            "Review your response above carefully. Check for:\n"
+            "1. Did you consult the relevant expert for any factual domain question? "
+            "If you answered a factual question about an expert's domain WITHOUT consulting them, "
+            "your answer may be wrong.\n"
+            "2. Are there any internal contradictions (e.g. giving different answers to the same question)?\n"
+            "3. Did you fabricate any specific facts (names, dates, episode numbers)?\n\n"
+            "If ANY of these are true, respond with:\n"
+            "«escalate»\nDescribe the problem.\n«/escalate»\n\n"
+            "If your response is accurate and you consulted experts where needed, "
+            "respond with ONLY «proceed»."
         )
 
         messages_copy = list(messages)
@@ -524,7 +632,8 @@ class SprintOrchestrator:
         messages_copy.append({"role": "user", "content": check_prompt})
 
         try:
-            result = self.client.generate(messages_copy, stop=["«/escalate»", "«proceed»"])
+            # No stop sequences — let thinking complete, then parse
+            result = self.client.generate(messages_copy, stop=None)
 
             if "«proceed»" in result:
                 if on_event:
@@ -533,7 +642,6 @@ class SprintOrchestrator:
             elif "«escalate»" in result:
                 if on_event:
                     on_event({"type": "self_check_done", "passed": False})
-                # Could handle escalation here, but for now just proceed
                 logger.info("Sprint self-check flagged low confidence but proceeding")
                 return False
             else:
@@ -543,8 +651,31 @@ class SprintOrchestrator:
             logger.warning("Self-check failed: %s — assuming pass", e)
             return True
 
+    def _extract_check_concern(self, draft, messages):
+        """Extract what Sprint is concerned about from the self-check response.
+
+        The self-check (run via _run_self_check) already generated a response
+        containing either «escalate» or «proceed». But that response is consumed
+        internally. Here we re-derive the concern from context.
+        """
+        # The last user message in conversation tells us what was asked
+        last_user = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user = msg["content"][:300]
+                break
+
+        return (
+            f"Sprint drafted a response to: {last_user}\n"
+            f"Sprint's self-check flagged potential accuracy issues "
+            f"(possible hallucination or missing expert consultation). "
+            f"Please provide accurate guidance."
+        )
+
     def _clean_output(self, text):
         """Remove Sprint control markers from the final output."""
+        # Strip thinking blocks (safety net)
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         # Remove complete expert blocks (with closing tag)
         text = re.sub(r'«expert:\w+».*?«/expert»', '', text, flags=re.DOTALL)
         # Remove incomplete expert blocks — the question Sprint asked the expert.
