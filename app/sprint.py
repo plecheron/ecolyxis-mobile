@@ -1,6 +1,6 @@
 """Sprint Orchestrator — the generation loop for the Sprint model.
 
-Sprint is a small, fast model (Qwen3.5-0.8B) that acts as a conductor.
+Sprint is a conductor model (Qwen3.6-35B-A3B) that acts as an orchestrator.
 It can:
   1. Answer directly when it knows the answer
   2. Emit «expert:name» blocks to consult specialized knowledge sources
@@ -89,15 +89,67 @@ MAX_ITERATIONS = 10
 # ---------------------------------------------------------------------------
 
 class SprintClient:
-    """LLM client configured for the Sprint model."""
+    """LLM client configured for the Sprint model.
 
-    def __init__(self, base_url, model, max_tokens=2048):
+    Handles gpu-manager variant switching: before generating, it requests
+    the appropriate variant on the manager API and waits for the switch.
+    """
+
+    # Class-level cache: which variant is currently loaded on the GPU
+    _current_variant = None
+
+    def __init__(self, base_url, model, max_tokens=2048, variant="sprint",
+                 manager_url=None):
         self.base_url = base_url
         self.model = model
         self.max_tokens = max_tokens
+        self.variant = variant
+        # Derive manager URL from proxy URL (same host, port 8090)
+        if manager_url:
+            self.manager_url = manager_url
+        else:
+            # base_url is like http://192.168.122.5:8081/v1
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            host = parsed.hostname  # 192.168.122.5 (no port)
+            scheme = parsed.scheme
+            self.manager_url = f"{scheme}://{host}:8090"
+
+    def _ensure_variant(self):
+        """Tell the gpu-manager to load our variant, wait until ready."""
+        if SprintClient._current_variant == self.variant:
+            return  # already loaded
+        try:
+            # Request the switch
+            resp = requests.post(
+                f"{self.manager_url}/switch",
+                json={"variant": self.variant},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                logger.info("Switched to variant '%s'", self.variant)
+
+            # Poll until ready (not switching) — 35B model can take 2+ min to load
+            for _ in range(150):  # max 150 seconds
+                try:
+                    sr = requests.get(f"{self.manager_url}/status", timeout=5)
+                    st = sr.json()
+                    if st.get("ready") and not st.get("switching"):
+                        if st.get("variant") == self.variant:
+                            SprintClient._current_variant = self.variant
+                            return
+                        # Wrong variant loaded — retry switch
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+            logger.warning("Variant switch to '%s' may not have completed", self.variant)
+        except Exception as e:
+            logger.warning("Variant switch failed: %s — proceeding anyway", e)
 
     def generate(self, messages, stop=None):
         """Non-streaming generation. Returns the full text."""
+        self._ensure_variant()
         payload = {
             "model": self.model,
             "messages": messages,
@@ -123,6 +175,7 @@ class SprintClient:
 
         The token_count tracks cumulative tokens for progress display.
         """
+        self._ensure_variant()
         payload = {
             "model": self.model,
             "messages": messages,

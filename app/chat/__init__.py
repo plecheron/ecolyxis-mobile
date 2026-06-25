@@ -188,8 +188,8 @@ def _run_sprint(client, msgs, publish=None):
     escal_base = current_app.config["SPRINT_ESCALATION_BASE_URL"]
     escal_model = current_app.config["SPRINT_ESCALATION_MODEL"]
 
-    sprint_client = SprintClient(sprint_base, sprint_model)
-    escal_client = SprintClient(escal_base, escal_model)
+    sprint_client = SprintClient(sprint_base, sprint_model, variant="sprint")
+    escal_client = SprintClient(escal_base, escal_model, variant="standard")
 
     orchestrator = SprintOrchestrator(sprint_client, escalation_client=escal_client)
 

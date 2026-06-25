@@ -14,5 +14,5 @@
 [expert.ds9]
 name        = "DS9 Knowledge Base"
 description = "Deep Space Nine lore: characters, species, episodes, station operations, Dominion War, Bajoran politics, Starfleet procedures aboard DS9, Gamma Quadrant, wormhole aliens, Ferengi culture."
-endpoint    = "http://192.168.122.5:8092/query"
+endpoint    = "http://192.168.122.5:8092/search"
 enabled     = true

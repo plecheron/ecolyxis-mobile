@@ -101,8 +101,13 @@ def list_expert_names():
 # Expert API Client
 # ---------------------------------------------------------------------------
 
-def call_expert(name, question, context=None, timeout=120):
+def call_expert(name, question, context=None, timeout=30):
     """Call an expert endpoint with a natural language question.
+
+    Supports two response formats:
+    - Synthesized: {"answer": "...", "confidence": 0.8, "sources": [...]}
+    - Retrieval-only: {"chunks": [{"text": "...", "source": "..."}], "confidence": 0.8}
+      (chunks are formatted as reference passages for the calling model to synthesize)
 
     Args:
         name: Expert name (must be in the registry)
@@ -130,14 +135,34 @@ def call_expert(name, question, context=None, timeout=120):
     resp.raise_for_status()
     data = resp.json()
 
+    confidence = data.get("confidence", 0.0)
+
+    # Handle retrieval-only responses (raw chunks)
+    if "chunks" in data:
+        chunks = data["chunks"]
+        if not chunks:
+            answer = "No relevant information found in the knowledge base."
+        else:
+            passages = []
+            for i, chunk in enumerate(chunks, 1):
+                source = chunk.get("source", "unknown")
+                text = chunk["text"]
+                passages.append(f"[{i}] ({source})\n{text}")
+            answer = "\n\n".join(passages)
+        sources = [{"source": c.get("source", "")} for c in chunks]
+    else:
+        # Synthesized response
+        answer = data.get("answer", "")
+        sources = data.get("sources", [])
+
     result = {
-        "answer": data.get("answer", ""),
-        "confidence": data.get("confidence", 0.0),
-        "sources": data.get("sources", []),
+        "answer": answer,
+        "confidence": confidence,
+        "sources": sources,
         "expert_name": expert.get("name", name),
     }
 
-    logger.info("Expert '%s' responded: confidence=%.3f, sources=%d",
-                name, result["confidence"], len(result["sources"]))
+    logger.info("Expert '%s' responded: confidence=%.3f, chunks/sources=%d",
+                name, result["confidence"], len(sources))
 
     return result
