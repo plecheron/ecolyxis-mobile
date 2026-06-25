@@ -35,7 +35,7 @@ def _persist_assistant(job, text, tokens, reasoning_tokens=0, energy_wh=None, co
 
 def run_chat(app, job, publish):
     """Run a chat job via ecolyxis-api (precise mode still uses local pipeline)."""
-    from app.chat import get_client, _run_precise
+    from app.chat import get_client, _run_precise, _run_sprint
     from app.jobs.api_client import stream_remote_job
     from app.llm import get_workspace_context
     from app.sustainability import PowerSampler, calculate_co2e, estimate_energy_for_tokens
@@ -58,6 +58,34 @@ def run_chat(app, job, publish):
     # GPU power sampler — captures real nvidia-smi readings during inference
     sampler = PowerSampler()
     sampler.sample()  # baseline reading
+
+    if mode == "sprint":
+        text, prompt_tokens, completion_tokens, sprint_result = _run_sprint(
+            client, msgs, publish=publish
+        )
+        sampler.sample()
+        if text:
+            publish({"type": "content", "text": text})
+        energy_wh = sampler.energy_wh()
+        if energy_wh is None:
+            energy_wh = estimate_energy_for_tokens(prompt_tokens, completion_tokens)
+        co2e_g = calculate_co2e(energy_wh)
+        message_id = _persist_assistant(
+            job, text, completion_tokens,
+            energy_wh=energy_wh, co2e_g=co2e_g,
+        )
+        return {
+            "message_id": message_id,
+            "tokens": completion_tokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "reasoning_tokens": 0,
+            "energy_wh": energy_wh,
+            "co2e_g": co2e_g,
+            "via": "sprint-orchestrator",
+            "expert_calls": len(sprint_result.get("expert_calls", [])),
+            "escalated": sprint_result.get("escalated", False),
+        }
 
     if precise:
         text, prompt_tokens, completion_tokens = _run_precise(client, msgs, "standard")

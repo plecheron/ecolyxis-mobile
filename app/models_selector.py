@@ -19,6 +19,13 @@ AVAILABLE_MODELS = [
         "tier": "free",
     },
     {
+        "id": "ecolyxis-sprint",
+        "name": "Sprint",
+        "description": "Lightning-fast with expert knowledge lookup and smart escalation",
+        "context_window": 4096,
+        "tier": "free",
+    },
+    {
         "id": "ecolyxis-long",
         "name": "Long Context",
         "description": "Handles long documents and complex conversations",

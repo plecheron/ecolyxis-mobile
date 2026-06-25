@@ -29,11 +29,11 @@ from app.chat import (
 
 # Modes selectable in the chat header dropdown (chat + media). Used to validate
 # the per-thread remembered mode.
-VALID_MODES = {"quick", "standard", "long", "precise", "image", "edit", "video", "vision"}
+VALID_MODES = {"quick", "standard", "long", "precise", "sprint", "image", "edit", "video", "vision"}
 # Only conversational modes are remembered per-thread. A media mode (image/edit/
 # video) is a one-shot action — persisting it would "switch" the thread into
 # generating media on the next plain message, which surprises users.
-CHAT_MODES = {"quick", "standard", "long", "precise", "vision"}
+CHAT_MODES = {"quick", "standard", "long", "precise", "sprint", "vision"}
 
 
 @chat_bp.route("/chat/<string:thread_id>")
@@ -135,6 +135,22 @@ def edit_message(thread_id, message_id):
     client = get_client()
     workspace_context = get_workspace_context(thread)
     msgs = client.build_messages(thread, mode=mode, workspace_context=workspace_context)
+
+    # Sprint mode uses the orchestrator
+    if mode == "sprint":
+        from app.chat import _run_sprint
+
+        def _stream_sprint():
+            try:
+                text, pt, ct, result = _run_sprint(client, msgs)
+                if text:
+                    yield f"data: {json.dumps({'content': text}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'done': True, 'full_response': text}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(_stream_sprint(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     def _stream_edit():
         full_response = ""
