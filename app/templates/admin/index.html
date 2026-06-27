@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block body_class %}admin-page{% endblock %}
 {% block title %}Admin Dashboard — Ecolyxis{% endblock %}
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
 {% block head %}
 <style>html{height:auto!important;overflow:auto!important}body.admin-page{height:auto!important;overflow:auto!important}</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>

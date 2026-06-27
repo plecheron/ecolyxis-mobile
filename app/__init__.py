@@ -1,4 +1,5 @@
 from flask import Flask, redirect, url_for, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required
 from flask_migrate import Migrate
@@ -35,6 +36,8 @@ def _validate_config(app):
 
 def create_app(test_config=None):
     app = Flask(__name__)
+    # Trust Caddy's X-Forwarded-* headers so Flask generates https:// URLs
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
     app.config.from_object(Config)
     if test_config:
         app.config.update(test_config)
@@ -279,5 +282,6 @@ def create_app(test_config=None):
         def chat_redirect():
             """Redirect bare /chat to dashboard."""
             return redirect(url_for("dashboard.index"))
+
 
     return app

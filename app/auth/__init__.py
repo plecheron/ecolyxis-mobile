@@ -103,4 +103,4 @@ def _generate_captcha():
 
 
 
-from app.auth import routes, webauthn  # noqa: E402,F401 — register routes
+from app.auth import routes, webauthn, reset  # noqa: E402,F401 — register routes

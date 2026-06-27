@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/billing.css') }}">
+{% endblock %}
 {% block title %}Billing — Ecolyxis{% endblock %}
 {% block body %}
 <div class="app-layout">

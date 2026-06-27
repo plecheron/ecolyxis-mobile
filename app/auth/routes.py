@@ -53,6 +53,11 @@ def signup():
             flash("Incorrect answer to the security question.", "error")
             return render_template("auth/signup.html", email=email, captcha=_generate_captcha())
 
+        # Terms acceptance required
+        if not request.form.get("agree_terms"):
+            flash("You must accept the Terms of Service and Privacy Policy to create an account.", "error")
+            return render_template("auth/signup.html", email=email, captcha=_generate_captcha())
+
         errors = []
         if not email or "@" not in email:
             errors.append("Please enter a valid email.")
