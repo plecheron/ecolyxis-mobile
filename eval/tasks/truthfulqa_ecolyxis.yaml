@@ -1,0 +1,23 @@
+task: truthfulqa_ecolyxis
+dataset_path: truthfulqa/truthful_qa
+dataset_name: generation
+output_type: generate_until
+training_split: validation
+generation_kwargs:
+  until: []
+  max_new_tokens: 4096
+  temperature: 0.0
+  do_sample: false
+doc_to_text: "Q: {{question}}\nA:"
+doc_to_target: "{{['Best answer'] | map(attribute='answer') | first}}"
+process_results: !function utils.truthfulqa_score
+metric_list:
+  - metric: bleu_acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge1_acc
+    aggregation: mean
+    higher_is_better: true
+should_decontaminate: false
+metadata:
+  version: 1.0

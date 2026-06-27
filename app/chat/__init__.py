@@ -11,6 +11,9 @@ from app import db
 from app.models import Thread, Message, GeneratedImage, GeneratedVideo
 from app.llm import LLMClient
 
+import logging
+logger = logging.getLogger('ecolyxis.chat')
+
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/opt/Ecolyxis/uploads")
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -161,6 +164,72 @@ def _run_precise(client, msgs, mode):
     total_completion_tokens += ct
 
     return final, total_prompt_tokens, total_completion_tokens
+
+
+def _run_sprint(client, msgs, publish=None):
+    """Sprint mode: orchestrated generation with expert lookup + escalation.
+
+    Returns (final_text, prompt_tokens, completion_tokens).
+
+    The orchestrator manages the generation loop: Sprint generates, may emit
+    «expert:name» blocks (intercepted, expert called, result injected), runs
+    a self-check, and may escalate to a stronger model. Only the cleaned final
+    response is returned.
+
+    publish: optional callback(dict) for lifecycle events (expert consultations,
+             escalation, self-check). Used to drive SSE status updates in the
+             job worker.
+    """
+    from app.sprint import SprintClient, SprintOrchestrator
+
+    # Build the Sprint client from app config
+    sprint_base = current_app.config["SPRINT_LLM_BASE_URL"]
+    sprint_model = current_app.config["SPRINT_LLM_MODEL"]
+    escal_base = current_app.config["SPRINT_ESCALATION_BASE_URL"]
+    escal_model = current_app.config["SPRINT_ESCALATION_MODEL"]
+
+    sprint_client = SprintClient(sprint_base, sprint_model, variant="sprint")
+    escal_client = SprintClient(escal_base, escal_model, variant="standard")
+
+    orchestrator = SprintOrchestrator(sprint_client, escalation_client=escal_client)
+
+    # Convert msgs (which includes system prompt + history) to conversation
+    # messages for the orchestrator. The orchestrator adds its own Sprint
+    # system prompt, so strip the first system message.
+    conversation = []
+    for m in msgs:
+        if m["role"] == "system":
+            continue
+        # Convert non-string content to text for the small model
+        content = m["content"]
+        if not isinstance(content, str):
+            if isinstance(content, list):
+                content = " ".join(
+                    p.get("text", "") for p in content if p.get("type") == "text"
+                )
+            else:
+                content = str(content)
+        conversation.append({"role": m["role"], "content": content})
+
+    def _on_event(event):
+        if publish:
+            publish({"type": "sprint_event", "event": event})
+
+    result = orchestrator.generate(conversation, on_event=_on_event)
+
+    final_text = result["response"]
+    completion_tokens = result.get("total_tokens", 0)
+
+    logger.info(
+        "Sprint completed: experts=%d escalated=%s self_check=%s iters=%d tokens=%d",
+        len(result.get("expert_calls", [])),
+        result.get("escalated", False),
+        result.get("self_check_passed", False),
+        result.get("iterations", 0),
+        completion_tokens,
+    )
+
+    return final_text, 0, completion_tokens, result
 
 def _save_remote_image(remote_url):
     """Fetch an image from the remote server and save it locally.

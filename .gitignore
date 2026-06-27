@@ -11,3 +11,4 @@ uploads/
 config.real.py
 config.py.real
 .coverage
+.venv/

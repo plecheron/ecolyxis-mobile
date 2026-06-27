@@ -1,0 +1,18 @@
+# Expert Registry for Sprint Orchestration
+# ============================================================
+# Each expert is a specialized knowledge source that Sprint can consult
+# mid-generation. Sprint emits «expert:name» blocks during generation;
+# the orchestrator intercepts these, calls the expert endpoint, and
+# injects the processed answer back into Sprint's context.
+#
+# To add a new expert:
+#   1. Add a [expert.<name>] block below
+#   2. Fill in name, description, endpoint
+#   3. Restart Ecolyxis
+# ============================================================
+
+[expert.ds9]
+name        = "DS9 Knowledge Base"
+description = "Deep Space Nine lore: characters, species, episodes, station operations, Dominion War, Bajoran politics, Starfleet procedures aboard DS9, Gamma Quadrant, wormhole aliens, Ferengi culture."
+endpoint    = "http://192.168.122.5:8092/search"
+enabled     = true

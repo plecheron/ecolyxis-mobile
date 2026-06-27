@@ -1,38 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 Not Found — Ecolyxis</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .container { text-align: center; padding: 2rem; }
-        .emoji { font-size: 4rem; margin-bottom: 1rem; }
-        h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-        p { opacity: 0.8; margin-bottom: 2rem; }
-        .btns { display: flex; gap: 1rem; justify-content: center; }
-        a { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; }
-        .btn-primary { background: #22c55e; color: #000; }
-        .btn-outline { border: 1px solid #444; color: #e0e0e0; }
-        .btn-back { font-size: 0.85rem; padding: 0.5rem 1rem; color: #888; text-decoration: none; }
-        .btn-back:hover { color: #e0e0e0; }
-        a:hover { opacity: 0.9; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="emoji">🔍</div>
-        <h1>Page Not Found</h1>
-        <p>The page you're looking for doesn't exist or has been moved.</p>
-        <div class="btns">
-            <a href="/" class="btn-primary">🏠 Go Home</a>
-            <a href="/dashboard" class="btn-outline">💬 My Chats</a>
-        </div>
-        <div class="btns" style="margin-top: 1rem;">
-            <a href="javascript:history.back()" class="btn-back">← Go Back</a>
-            <a href="/contact" class="btn-back">✉️ Contact Support</a>
-        </div>
+{% extends "base.html" %}
+{% block title %}404 Not Found — Ecolyxis{% endblock %}
+{% block body %}
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:2rem;">
+    <a href="/" style="font-size:1.5rem;text-decoration:none;margin-bottom:1.5rem;">🌿 Ecolyxis</a>
+    <div style="font-size:4rem;">🔍</div>
+    <h1 style="margin:1rem 0;">Page Not Found</h1>
+    <p style="color:var(--text-muted,#8b949e);margin-bottom:2rem;">The page you're looking for doesn't exist or has been moved.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+        <a href="/" class="btn btn-primary">🏠 Go Home</a>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline">💬 My Chats</a>
     </div>
-</body>
-</html>
+    <div style="margin-top:1rem;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+        <a href="javascript:history.back()" style="font-size:0.85rem;color:var(--text-muted,#8b949e);text-decoration:none;">← Go Back</a>
+        <a href="{{ url_for('contact.index') }}" style="font-size:0.85rem;color:var(--text-muted,#8b949e);text-decoration:none;">✉️ Contact Support</a>
+    </div>
+</div>
+{% endblock %}

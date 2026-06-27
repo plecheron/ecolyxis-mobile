@@ -918,6 +918,9 @@ function streamJob(jobId, opts) {
                 textEl.innerHTML = renderStreamingMd(fullResponse);
                 textEl.classList.add('streaming-cursor');
                 maybeScroll();
+            } else if (t === "sprint_fallback") {
+                // Sprint model unavailable — fell back to standard (#164)
+                showToast('⚠️ Sprint model unavailable — using Standard mode.', 'warning');
             } else if (t === "done") {
                 promptTokens = event.prompt_tokens || 0;
                 completionTokens = event.completion_tokens || event.tokens || 0;

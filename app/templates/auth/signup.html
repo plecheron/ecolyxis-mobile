@@ -1,21 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sign Up — Ecolyxis<script>
-document.getElementById('password').addEventListener('input', function(e) {
-    var v = e.target.value;
-    var bar = document.getElementById('password-strength-bar');
-    var score = 0;
-    if (v.length >= 6) score++;
-    if (v.length >= 10) score++;
-    if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
-    if (/\d/.test(v)) score++;
-    if (/[^A-Za-z0-9]/.test(v)) score++;
-    var colors = ['#da3633','#bf8700','#d29922','#2ea44f','#2ea44f'];
-    var widths = ['0%','20%','40%','60%','80%','100%'];
-    bar.style.background = colors[Math.min(score,4)] || 'var(--bg-input,#21262d)';
-    bar.style.width = widths[Math.min(score+1,5)];
-});
-</script>
-{% endblock %}
+{% block title %}Sign Up — Ecolyxis{% endblock %}
 {% block head %}
 <script type="text/javascript">
     adroll_adv_id = "S253WCCAQFCATJVLBXA2ZV";
