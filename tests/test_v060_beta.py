@@ -396,7 +396,7 @@ class TestBlogEmptyState:
     def test_blog_has_empty_state(self, client):
         resp = client.get("/blog/")
         html = resp.data.decode("utf-8")
-        assert "No posts yet" in html or "No updates yet" in html or "check back soon" in html.lower()
+        assert "coming soon" in html.lower() or "no posts yet" in html.lower()
 
 
 # ─── #150: Pricing heading hierarchy ───

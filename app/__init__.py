@@ -171,22 +171,53 @@ def create_app(test_config=None):
     with app.app_context():
         from app.post_model import Post  # ensure model is registered
         import markdown as md_lib
+
+        # Chat renderer: uses sane_lists (not nl2br) to match marked.js GFM behavior.
+        # nl2br collapses lists into <br> text; sane_lists recognizes lists without
+        # a preceding blank line, matching client-side rendering (#162).
+        import re as _re
+        _CHAT_MD_EXTENSIONS = ["fenced_code", "tables", "sane_lists"]
+
+        def _render_md(text):
+            """Render markdown to HTML, matching client-side marked.js.
+
+            1. Escape raw HTML (XSS protection — Python-markdown passes it through)
+            2. Insert a blank line before the first list item following text (GFM)
+            3. Render markdown (only produces known-safe tags from escaped input)
+            """
+            safe = str(markupsafe.escape(text))
+            # GFM/marked.js recognizes lists even without a preceding blank line;
+            # Python-markdown requires one. Insert it for the first list item only.
+            safe = _re.sub(r'([^\n*+\- ])\n([-*+]\s)', r'\1\n\n\2', safe, count=1)
+            return markupsafe.Markup(
+                md_lib.markdown(safe, extensions=_CHAT_MD_EXTENSIONS)
+            )
+
+        # Blog renderer: keeps nl2br for blog post line-break semantics.
         app.jinja_env.filters["markdown"] = lambda text: md_lib.markdown(text, extensions=["fenced_code", "tables", "nl2br"])
         app.jinja_env.filters["markdown"].__name__ = "markdown"
 
         import json as _json
         import markupsafe
         def render_message(text):
-            """Render message content. For image messages, show text + image tags."""
-            if not text or not text.strip().startswith("["):
-                return markupsafe.Markup.escape(text) if text else ""
+            """Render message content. Text messages render as markdown (matching
+            client-side marked.js). Image messages show text + image tags."""
+            if not text:
+                return ""
+            # Plain text message — render as markdown (#162)
+            if not text.strip().startswith("["):
+                return _render_md(text)
             try:
                 parts = _json.loads(text.strip())
                 if not isinstance(parts, list):
-                    return markupsafe.Markup.escape(text)
+                    # Not a JSON array — treat as markdown text
+                    return _render_md(text)
                 has_image = any(p.get("type") == "image" for p in parts)
                 if not has_image:
-                    return markupsafe.Markup.escape(text)
+                    # JSON array but no images — extract text and render as markdown
+                    text_parts = [p.get("text", "") for p in parts if p.get("type") == "text"]
+                    combined = "\n".join(text_parts)
+                    return _render_md(combined) if combined.strip() else ""
                 html_parts = []
                 for p in parts:
                     if p.get("type") == "text":
@@ -218,7 +249,7 @@ def create_app(test_config=None):
                             html_parts.append('<div class="message-images"><img src="' + str(markupsafe.escape(p["url"][:50])) + '..." class="message-image" alt="image"></div>')
                 return markupsafe.Markup("".join(html_parts))
             except (_json.JSONDecodeError, KeyError, TypeError):
-                return markupsafe.Markup.escape(text)
+                return _render_md(text)
         app.jinja_env.filters["render_message"] = render_message
 
         @app.errorhandler(404)

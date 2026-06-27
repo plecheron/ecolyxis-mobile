@@ -102,6 +102,10 @@ MAX_ITERATIONS = 10
 # Sprint Client
 # ---------------------------------------------------------------------------
 
+class VariantNotReadyError(Exception):
+    """Raised when the GPU variant cannot be loaded after a switch attempt."""
+
+
 class SprintClient:
     """LLM client configured for the Sprint model.
 
@@ -111,6 +115,8 @@ class SprintClient:
 
     # Class-level cache: which variant is currently loaded on the GPU
     _current_variant = None
+    _variant_cached_at = 0
+    VARIANT_CACHE_TTL = 30  # seconds — shorter than typical keep-warm timeout
 
     def __init__(self, base_url, model, max_tokens=2048, variant="sprint",
                  manager_url=None):
@@ -130,36 +136,71 @@ class SprintClient:
             self.manager_url = f"{scheme}://{host}:8090"
 
     def _ensure_variant(self):
-        """Tell the gpu-manager to load our variant, wait until ready."""
-        if SprintClient._current_variant == self.variant:
-            return  # already loaded
+        """Tell the gpu-manager to load our variant, wait until ready.
+
+        Raises VariantNotReadyError if the switch fails or times out (#164).
+        """
+        now = time.time()
+        cache_fresh = (now - SprintClient._variant_cached_at) < SprintClient.VARIANT_CACHE_TTL
+
+        # Fast path: cache says our variant is loaded and the cache is still fresh
+        if SprintClient._current_variant == self.variant and cache_fresh:
+            return
+
+        # Verify the cache: check gpu-manager status to see if keep-warm
+        # unloaded our variant (#164)
         try:
-            # Request the switch
+            sr = requests.get(f"{self.manager_url}/status", timeout=5)
+            st = sr.json()
+            if (st.get("ready") and not st.get("switching")
+                    and st.get("variant") == self.variant):
+                SprintClient._current_variant = self.variant
+                SprintClient._variant_cached_at = now
+                return
+        except Exception:
+            pass  # gpu-manager unreachable — try a switch anyway
+
+        # Request the switch
+        try:
             resp = requests.post(
                 f"{self.manager_url}/switch",
                 json={"variant": self.variant},
                 timeout=10,
             )
-            if resp.status_code == 200:
-                logger.info("Switched to variant '%s'", self.variant)
-
-            # Poll until ready (not switching) — 35B model can take 2+ min to load
-            for _ in range(150):  # max 150 seconds
-                try:
-                    sr = requests.get(f"{self.manager_url}/status", timeout=5)
-                    st = sr.json()
-                    if st.get("ready") and not st.get("switching"):
-                        if st.get("variant") == self.variant:
-                            SprintClient._current_variant = self.variant
-                            return
-                        # Wrong variant loaded — retry switch
-                        break
-                except Exception:
-                    pass
-                time.sleep(1)
-            logger.warning("Variant switch to '%s' may not have completed", self.variant)
+            if resp.status_code != 200:
+                raise VariantNotReadyError(
+                    f"gpu-manager rejected variant switch to '{self.variant}': "
+                    f"HTTP {resp.status_code}"
+                )
+            logger.info("Switched to variant '%s'", self.variant)
+        except VariantNotReadyError:
+            raise
         except Exception as e:
-            logger.warning("Variant switch failed: %s — proceeding anyway", e)
+            raise VariantNotReadyError(f"Variant switch request failed: {e}")
+
+        # Poll until ready (not switching) — 35B model can take 2+ min to load
+        for attempt in range(150):  # max 150 seconds
+            try:
+                sr = requests.get(f"{self.manager_url}/status", timeout=5)
+                st = sr.json()
+                if st.get("ready") and not st.get("switching"):
+                    if st.get("variant") == self.variant:
+                        SprintClient._current_variant = self.variant
+                        SprintClient._variant_cached_at = time.time()
+                        return
+                    # Wrong variant loaded — retry the switch request (#164)
+                    requests.post(
+                        f"{self.manager_url}/switch",
+                        json={"variant": self.variant},
+                        timeout=10,
+                    )
+            except Exception:
+                pass
+            time.sleep(1)
+
+        raise VariantNotReadyError(
+            f"Variant switch to '{self.variant}' timed out after 150s"
+        )
 
     def generate(self, messages, stop=None, enable_thinking=True, timeout=300,
                  max_tokens=None):

@@ -60,32 +60,45 @@ def run_chat(app, job, publish):
     sampler.sample()  # baseline reading
 
     if mode == "sprint":
-        text, prompt_tokens, completion_tokens, sprint_result = _run_sprint(
-            client, msgs, publish=publish
-        )
-        sampler.sample()
-        if text:
-            publish({"type": "content", "text": text})
-        energy_wh = sampler.energy_wh()
-        if energy_wh is None:
-            energy_wh = estimate_energy_for_tokens(prompt_tokens, completion_tokens)
-        co2e_g = calculate_co2e(energy_wh)
-        message_id = _persist_assistant(
-            job, text, completion_tokens,
-            energy_wh=energy_wh, co2e_g=co2e_g,
-        )
-        return {
-            "message_id": message_id,
-            "tokens": completion_tokens,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "reasoning_tokens": 0,
-            "energy_wh": energy_wh,
-            "co2e_g": co2e_g,
-            "via": "sprint-orchestrator",
-            "expert_calls": len(sprint_result.get("expert_calls", [])),
-            "escalated": sprint_result.get("escalated", False),
-        }
+        try:
+            text, prompt_tokens, completion_tokens, sprint_result = _run_sprint(
+                client, msgs, publish=publish
+            )
+            sampler.sample()
+            if text:
+                publish({"type": "content", "text": text})
+            energy_wh = sampler.energy_wh()
+            if energy_wh is None:
+                energy_wh = estimate_energy_for_tokens(prompt_tokens, completion_tokens)
+            co2e_g = calculate_co2e(energy_wh)
+            message_id = _persist_assistant(
+                job, text, completion_tokens,
+                energy_wh=energy_wh, co2e_g=co2e_g,
+            )
+            return {
+                "message_id": message_id,
+                "tokens": completion_tokens,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "reasoning_tokens": 0,
+                "energy_wh": energy_wh,
+                "co2e_g": co2e_g,
+                "via": "sprint-orchestrator",
+                "expert_calls": len(sprint_result.get("expert_calls", [])),
+                "escalated": sprint_result.get("escalated", False),
+            }
+        except Exception as sprint_err:
+            # Sprint variant unavailable — fall back to standard with a
+            # user-visible notification instead of silent substitution (#164).
+            logger.warning(
+                "Sprint failed (%s) — falling back to standard for job %s",
+                sprint_err, job.id,
+            )
+            publish({
+                "type": "sprint_fallback",
+                "reason": str(sprint_err),
+            })
+            mode = "standard"  # fall through to standard path below
 
     if precise:
         text, prompt_tokens, completion_tokens = _run_precise(client, msgs, "standard")
