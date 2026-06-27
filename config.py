@@ -41,7 +41,7 @@ class Config:
     # default; the new endpoints exist regardless — this flips the UI over.
     JOBS_ENABLED = os.environ.get("JOBS_ENABLED", "0") not in ("0", "", "false", "False")
     LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://10.0.0.6:8081/v1")
-    LLM_MODEL = "Qwen_Qwen3.6-35B-A3B-Q4_0.gguf"
+    LLM_MODEL = "ecolyxis-standard"
     LLM_MAX_HISTORY = 20
     LLM_SYSTEM_PROMPT = (
         "You are Ecolyxis AI, a helpful, knowledgeable assistant. "

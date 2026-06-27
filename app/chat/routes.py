@@ -29,11 +29,11 @@ from app.chat import (
 
 # Modes selectable in the chat header dropdown (chat + media). Used to validate
 # the per-thread remembered mode.
-VALID_MODES = {"quick", "standard", "long", "precise", "image", "edit", "video", "vision"}
+VALID_MODES = {"sprint", "standard", "scatterbrain", "image", "edit", "video", "vision"}
 # Only conversational modes are remembered per-thread. A media mode (image/edit/
 # video) is a one-shot action — persisting it would "switch" the thread into
 # generating media on the next plain message, which surprises users.
-CHAT_MODES = {"quick", "standard", "long", "precise", "vision"}
+CHAT_MODES = {"sprint", "standard", "scatterbrain", "vision"}
 
 
 @chat_bp.route("/chat/<string:thread_id>")
@@ -227,7 +227,7 @@ def compact_thread(thread_id):
         prompt_tokens = 0
         completion_tokens = 0
         try:
-            for chunk in client.stream_chat(summary_messages, mode="long"):
+            for chunk in client.stream_chat(summary_messages, mode="standard"):
                 if isinstance(chunk, dict):
                     if "thinking_start" in chunk:
                         yield f"data: {json.dumps({'thinking_start': True})}\n\n"
@@ -490,7 +490,7 @@ def generate_title(thread_id):
             {"role": "user", "content": text[:500]},
         ]
         title_text = ""
-        for chunk in client.stream_chat(title_messages, mode="quick"):
+        for chunk in client.stream_chat(title_messages, mode="sprint"):
             if isinstance(chunk, str):
                 title_text += chunk
 

@@ -12,6 +12,7 @@ from flask import Blueprint, request, jsonify
 
 from app import db
 from app.models import ApiKey, ApiUsage, User, Wallet, Transaction
+from app.sustainability import estimate_energy_for_tokens, calculate_co2e
 
 api_bp = Blueprint("api", __name__, url_prefix="/v1")
 
@@ -20,11 +21,9 @@ PRICE_PER_MTOK = 278  # pence per million tokens (£2.78)
 
 # --- Model aliases -> proxy modes ---
 MODEL_ALIASES = {
+    "ecolyxis-sprint": "sprint",
     "ecolyxis-standard": "standard",
-    "ecolyxis-long": "long",
-    "ecolyxis-vision": "vision",
-    "ecolyxis-precise": "precise",
-    "ecolyxis-quick": "quick",
+    "ecolyxis-scatterbrain": "scatterbrain",
 }
 
 # --- In-memory rate limiter ---
@@ -154,18 +153,24 @@ def _apply_token_floor(reported, estimated):
     return 0
 
 
-def _log_usage_and_debit(app, api_key_id, wallet_id, endpoint, model, prompt_tokens, completion_tokens):
+def _log_usage_and_debit(app, api_key_id, wallet_id, endpoint, model, prompt_tokens, completion_tokens, energy_wh=None, co2e_g=None):
     """Log API usage and debit wallet. Runs inside an explicit app context."""
     with app.app_context():
         try:
             prompt_tokens = max(prompt_tokens, 1)  # floor at 1 to avoid zero-cost logging
             completion_tokens = max(completion_tokens, 1)
+            if energy_wh is None:
+                energy_wh = estimate_energy_for_tokens(prompt_tokens, completion_tokens)
+            if co2e_g is None:
+                co2e_g = calculate_co2e(energy_wh)
             usage = ApiUsage(
                 api_key_id=api_key_id,
                 endpoint=endpoint,
                 model=model,
                 tokens_prompt=prompt_tokens,
                 tokens_completion=completion_tokens,
+                energy_wh=energy_wh,
+                co2e_g=co2e_g,
             )
             db.session.add(usage)
 

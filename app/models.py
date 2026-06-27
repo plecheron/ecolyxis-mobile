@@ -209,6 +209,8 @@ class ApiUsage(db.Model):
     model = db.Column(db.String(100), nullable=True)
     tokens_prompt = db.Column(db.Integer, default=0)
     tokens_completion = db.Column(db.Integer, default=0)
+    energy_wh = db.Column(db.Float, nullable=True)
+    co2e_g = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 

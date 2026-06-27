@@ -177,9 +177,14 @@ def create_app(test_config=None):
         import json as _json
         import markupsafe
         def render_message(text):
-            """Render message content. For image messages, show text + image tags."""
+            """Render message content. Markdown for text, structured for images."""
             if not text or not text.strip().startswith("["):
-                return markupsafe.Markup.escape(text) if text else ""
+                if not text:
+                    return ""
+                # Escape HTML (XSS safe), then apply markdown
+                safe = markupsafe.escape(str(text))
+                html = md_lib.markdown(str(safe), extensions=["fenced_code", "tables", "nl2br"])
+                return markupsafe.Markup(html)
             try:
                 parts = _json.loads(text.strip())
                 if not isinstance(parts, list):

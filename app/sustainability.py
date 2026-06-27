@@ -23,6 +23,7 @@ from datetime import datetime, timezone, timedelta
 import subprocess
 import logging
 import time
+import threading
 
 logger = logging.getLogger('ecolyxis.sustainability')
 
@@ -83,6 +84,95 @@ def sample_gpu_power():
         return None, None
 
 
+
+
+def gpu_metrics_base_url(app=None):
+    """Base URL for the GPU manager proxy (no /v1 suffix)."""
+    try:
+        if app is None:
+            from flask import current_app
+            app = current_app
+        base = app.config.get("LLM_BASE_URL", "http://10.0.0.6:8081/v1")
+    except RuntimeError:
+        import os
+        base = os.environ.get("LLM_BASE_URL", "http://10.0.0.6:8081/v1")
+    return base.rstrip("/").rsplit("/v1", 1)[0].rstrip("/")
+
+
+def sample_remote_gpu_power(gpu_base=None, app=None):
+    """Sample GPU power (watts) from the inference host via gpu-manager."""
+    import requests
+    base = gpu_base or gpu_metrics_base_url(app)
+    try:
+        r = requests.get(f"{base}/internal/power", timeout=3)
+        if r.status_code == 200:
+            pw = r.json().get("power_w")
+            if pw is not None:
+                return float(pw), None
+    except Exception as exc:
+        logger.debug("remote GPU power sample failed: %s", exc)
+    return None, None
+
+
+class RemotePowerSampler:
+    """Poll GPU power on the inference host during a request (via gpu-manager)."""
+
+    def __init__(self, gpu_base=None, interval=0.5, app=None):
+        self.gpu_base = gpu_base or gpu_metrics_base_url(app)
+        self.interval = interval
+        self.samples = []
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        import threading
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def sample(self):
+        power, _ = sample_remote_gpu_power(self.gpu_base)
+        if power is not None:
+            self.samples.append((time.monotonic(), power))
+
+    def _poll_loop(self):
+        while not self._stop.is_set():
+            self.sample()
+            self._stop.wait(self.interval)
+
+    def energy_wh(self):
+        if len(self.samples) < 2:
+            return None
+        total_wh = 0.0
+        for i in range(1, len(self.samples)):
+            dt = self.samples[i][0] - self.samples[i - 1][0]
+            avg_power = (self.samples[i][1] + self.samples[i - 1][1]) / 2.0
+            total_wh += avg_power * dt / 3600.0
+        return round(total_wh, 6)
+
+
+def measure_inference_energy(app=None, gpu_base=None, interval=0.5):
+    """Context manager: poll remote GPU power for the duration of a block."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        sampler = RemotePowerSampler(gpu_base=gpu_base, interval=interval, app=app)
+        sampler.start()
+        try:
+            sampler.sample()
+            yield sampler
+        finally:
+            sampler.stop()
+            sampler.sample()
+
+    return _cm()
+
 class PowerSampler:
     """Accumulates GPU power samples over a job's lifetime.
 
@@ -139,6 +229,21 @@ def calculate_co2e(energy_wh, grid_factor=UK_GRID_CO2_PER_KWH, pue=ECOLYXIS_PUE)
     energy_kwh = energy_wh / 1000.0 * pue
     co2e_kg = energy_kwh * grid_factor
     return round(co2e_kg * 1000.0, 4)  # grams
+
+
+def reasoning_tokens_from_usage(usage, reasoning_text=""):
+    """Reasoning token count from LLM usage metadata or streamed thinking text."""
+    if usage:
+        details = usage.get("completion_tokens_details") or {}
+        rt = details.get("reasoning_tokens")
+        if rt is not None:
+            return int(rt)
+        rt = usage.get("reasoning_tokens")
+        if rt is not None:
+            return int(rt)
+    if reasoning_text:
+        return len(reasoning_text.split())
+    return 0
 
 
 def estimate_energy_for_tokens(prompt_tokens, completion_tokens, reasoning_tokens=0):
@@ -252,6 +357,28 @@ def _get_ledger_totals(user_id=None):
     return row[0] or 0.0, row[1] or 0.0
 
 
+
+
+def _get_api_energy(user_id=None):
+    """Energy from API requests (stored values + token fallback)."""
+    from app.models import ApiUsage, ApiKey
+
+    real_q = db.session.query(func.coalesce(func.sum(ApiUsage.energy_wh), 0)).join(
+        ApiKey, ApiUsage.api_key_id == ApiKey.id
+    )
+    if user_id is not None:
+        real_q = real_q.filter(ApiKey.user_id == user_id)
+    real = real_q.filter(ApiUsage.energy_wh.isnot(None)).scalar() or 0.0
+
+    est_q = db.session.query(
+        func.coalesce(func.sum(ApiUsage.tokens_prompt + ApiUsage.tokens_completion), 0)
+    ).join(ApiKey, ApiUsage.api_key_id == ApiKey.id)
+    if user_id is not None:
+        est_q = est_q.filter(ApiKey.user_id == user_id)
+    est_tokens = est_q.filter(ApiUsage.energy_wh.is_(None)).scalar() or 0
+
+    return real + (est_tokens * WH_PER_TOKEN_FALLBACK)
+
 def _get_user_energy(user_id):
     """Get total energy consumed by a user's messages (Wh).
 
@@ -287,7 +414,7 @@ def _get_user_energy(user_id):
     # Archived energy from deleted messages
     ledger_energy, _ = _get_ledger_totals(user_id)
 
-    return real + (estimated * WH_PER_TOKEN_FALLBACK) + ledger_energy
+    return real + (estimated * WH_PER_TOKEN_FALLBACK) + ledger_energy + _get_api_energy(user_id)
 
 
 def _get_user_messages_count(user_id):
@@ -329,7 +456,7 @@ def _get_site_wide_energy():
     # Archived energy from deleted messages
     ledger_energy, _ = _get_ledger_totals()
 
-    return real + (estimated_tokens * WH_PER_TOKEN_FALLBACK) + ledger_energy
+    return real + (estimated_tokens * WH_PER_TOKEN_FALLBACK) + ledger_energy + _get_api_energy()
 
 
 def _get_site_wide_user_count():

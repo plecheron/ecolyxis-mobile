@@ -34,11 +34,11 @@ def _persist_assistant(job, text, tokens, reasoning_tokens=0, energy_wh=None, co
 
 
 def run_chat(app, job, publish):
-    """Run a chat job via ecolyxis-api (precise mode still uses local pipeline)."""
-    from app.chat import get_client, _run_precise
+    """Run a chat job via ecolyxis-api (all modes dispatched via ecolyxis-api)."""
+    from app.chat import get_client
     from app.jobs.api_client import stream_remote_job
     from app.llm import get_workspace_context
-    from app.sustainability import PowerSampler, calculate_co2e, estimate_energy_for_tokens
+    from app.sustainability import RemotePowerSampler, calculate_co2e, estimate_energy_for_tokens, reasoning_tokens_from_usage
 
     thread = db.session.get(Thread, job.thread_id)
     if thread is None:
@@ -46,7 +46,6 @@ def run_chat(app, job, publish):
 
     params = job.params or {}
     mode = params.get("mode", "standard")
-    precise = params.get("precise", mode == "precise")
     show_thinking = params.get("show_thinking", True)
 
     client = get_client()
@@ -55,35 +54,10 @@ def run_chat(app, job, publish):
 
     publish({"type": "stream_start"})
 
-    # GPU power sampler — captures real nvidia-smi readings during inference
-    sampler = PowerSampler()
-    sampler.sample()  # baseline reading
-
-    if precise:
-        text, prompt_tokens, completion_tokens = _run_precise(client, msgs, "standard")
-        sampler.sample()
-        if text:
-            publish({"type": "content", "text": text})
-        # Compute energy from real GPU power data
-        energy_wh = sampler.energy_wh()
-        if energy_wh is None:
-            # Fallback: estimate from tokens
-            energy_wh = estimate_energy_for_tokens(prompt_tokens, completion_tokens)
-        co2e_g = calculate_co2e(energy_wh)
-        message_id = _persist_assistant(
-            job, text, completion_tokens,
-            energy_wh=energy_wh, co2e_g=co2e_g,
-        )
-        return {
-            "message_id": message_id,
-            "tokens": completion_tokens,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "reasoning_tokens": 0,
-            "energy_wh": energy_wh,
-            "co2e_g": co2e_g,
-            "via": "local-precise",
-        }
+    # GPU power sampler — polls inference host during job
+    sampler = RemotePowerSampler(app=app)
+    sampler.start()
+    sampler.sample()
 
     result = stream_remote_job(
         "chat",
@@ -92,6 +66,7 @@ def run_chat(app, job, publish):
         client_ref=str(job.id),
     )
 
+    sampler.stop()
     sampler.sample()
 
     text = result.get("text", "")
@@ -102,6 +77,8 @@ def run_chat(app, job, publish):
     )
 
     reasoning_tokens = int(result.get("reasoning_tokens") or 0)
+    if not reasoning_tokens:
+        reasoning_tokens = reasoning_tokens_from_usage(usage)
 
     # Try real GPU power first, fall back to token-based estimate
     energy_wh = result.get("energy_wh") or sampler.energy_wh()

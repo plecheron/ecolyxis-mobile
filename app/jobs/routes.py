@@ -134,7 +134,7 @@ def submit_chat(thread_id):
         kind="chat",
         status="queued",
         is_premium=current_user.is_premium,
-        params={"mode": mode, "precise": mode == "precise", "show_thinking": True},
+        params={"mode": mode, "show_thinking": True},
     )
     db.session.add(job)
     db.session.commit()

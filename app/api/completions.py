@@ -12,6 +12,7 @@ import requests as http_requests
 
 from app import db
 from app.models import Wallet
+from app.sustainability import RemotePowerSampler, calculate_co2e, estimate_energy_for_tokens, reasoning_tokens_from_usage
 from app.api import (
     api_bp,
     authenticate_api,
@@ -39,6 +40,16 @@ def _build_message(backing_message):
         msg["tool_calls"] = tool_calls
     return msg
 
+
+
+
+def _energy_from_tracker(tracker, prompt_tokens, completion_tokens, reasoning_tokens=0):
+    energy_wh = tracker.energy_wh() if tracker else None
+    if energy_wh is None:
+        energy_wh = estimate_energy_for_tokens(
+            prompt_tokens, completion_tokens, reasoning_tokens
+        )
+    return energy_wh, calculate_co2e(energy_wh)
 
 @api_bp.route("/chat/completions", methods=["POST"])
 @authenticate_api
@@ -120,13 +131,21 @@ def chat_completions():
     if mode == "precise":
         from app.llm import LLMClient
         from app.chat import _run_precise
+        tracker = RemotePowerSampler(app=current_app)
         client = LLMClient(
             base_url=current_app.config["LLM_BASE_URL"],
             model=current_app.config["LLM_MODEL"],
             system_prompt="",
             max_history=999,
         )
-        final, prompt_tokens, completion_tokens = _run_precise(client, messages, "standard")
+        tracker.start()
+        try:
+            tracker.sample()
+            final, prompt_tokens, completion_tokens = _run_precise(client, messages, "standard")
+        finally:
+            tracker.stop()
+            tracker.sample()
+        energy_wh, co2e_g = _energy_from_tracker(tracker, prompt_tokens, completion_tokens, 0)
         result = jsonify({
             "id": completion_id,
             "object": "chat.completion",
@@ -135,7 +154,7 @@ def chat_completions():
             "choices": [{"index": 0, "message": {"role": "assistant", "content": final}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens},
         })
-        _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, prompt_tokens, completion_tokens)
+        _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, prompt_tokens, completion_tokens, energy_wh=energy_wh, co2e_g=co2e_g)
         for k, v in _rate_headers(api_key, wallet).items():
             result.headers[k] = v
         return result
@@ -160,12 +179,18 @@ def chat_completions():
 
 def _sync_response(llm_url, payload, completion_id, created, model, api_key, wallet_id, max_tokens, app, llm_headers=None):
     """Non-streaming completion."""
+    tracker = RemotePowerSampler(app=app)
+    tracker.start()
     try:
+        tracker.sample()
         resp = http_requests.post(llm_url, json=payload, timeout=120, headers=llm_headers or {})
         resp.raise_for_status()
         data = resp.json()
     except http_requests.RequestException as e:
         return jsonify({"error": {"message": f"LLM backend error: {str(e)}", "type": "server_error"}}), 502
+    finally:
+        tracker.stop()
+        tracker.sample()
 
     choice = data.get("choices", [{}])[0]
     message = choice.get("message", {})
@@ -173,8 +198,13 @@ def _sync_response(llm_url, payload, completion_id, created, model, api_key, wal
 
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
+    reasoning_text = (message.get("reasoning_content") or "")
+    reasoning_tokens = reasoning_tokens_from_usage(usage, reasoning_text)
+    energy_wh, co2e_g = _energy_from_tracker(
+        tracker, prompt_tokens, completion_tokens, reasoning_tokens
+    )
 
-    _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, prompt_tokens, completion_tokens)
+    _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, prompt_tokens, completion_tokens, energy_wh=energy_wh, co2e_g=co2e_g)
 
     with app.app_context():
         wallet = db.session.get(Wallet, wallet_id)
@@ -208,81 +238,98 @@ def _stream_response(llm_url, payload, completion_id, created, model, api_key, w
     def generate():
         total_prompt = 0
         total_completion = 0
+        last_usage = {}
+        reasoning_text = ""
+        tracker = RemotePowerSampler(app=app)
+        tracker.start()
+        tracker.sample()
         try:
-            resp = http_requests.post(llm_url, json=payload, stream=True, timeout=120, headers=llm_headers or {})
-            resp.raise_for_status()
+            try:
+                resp = http_requests.post(llm_url, json=payload, stream=True, timeout=120, headers=llm_headers or {})
+                resp.raise_for_status()
 
-            for raw_line in resp.iter_lines():
-                if not raw_line:
-                    continue
-                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
-                if not line.startswith("data: "):
-                    continue
-                data_str = line[6:]
-                if data_str.strip() == "[DONE]":
-                    usage_chunk = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": model,
-                        "choices": [],
-                        "usage": {
-                            "prompt_tokens": total_prompt,
-                            "completion_tokens": total_completion,
-                            "total_tokens": total_prompt + total_completion,
+                for raw_line in resp.iter_lines():
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        usage_chunk = {
+                            "id": completion_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [],
+                            "usage": {
+                                "prompt_tokens": total_prompt,
+                                "completion_tokens": total_completion,
+                                "total_tokens": total_prompt + total_completion,
+                            }
                         }
-                    }
-                    yield f"data: {json.dumps(usage_chunk)}\n\n"
-                    yield "data: [DONE]\n\n"
-                    break
+                        yield f"data: {json.dumps(usage_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        break
 
-                try:
-                    chunk = json.loads(data_str)
-                    usage = chunk.get("usage")
-                    if usage:
-                        total_prompt = usage.get("prompt_tokens", 0)
-                        total_completion = usage.get("completion_tokens", 0)
+                    try:
+                        chunk = json.loads(data_str)
+                        usage = chunk.get("usage")
+                        if usage:
+                            total_prompt = usage.get("prompt_tokens", 0)
+                            total_completion = usage.get("completion_tokens", 0)
+                            last_usage = usage
+                            continue
+
+                        choice_data = chunk.get("choices", [{}])[0]
+                        delta = choice_data.get("delta", {})
+                        rc = delta.get("reasoning_content")
+                        if rc:
+                            reasoning_text += rc
+                        content = delta.get("content") or rc or ""
+
+                        out_delta = {}
+                        if content:
+                            out_delta["content"] = content
+                        if delta.get("tool_calls"):
+                            out_delta["tool_calls"] = delta["tool_calls"]
+
+                        out_chunk = {
+                            "id": completion_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": out_delta,
+                                    "finish_reason": choice_data.get("finish_reason"),
+                                }
+                            ]
+                        }
+                        yield f"data: {json.dumps(out_chunk)}\n\n"
+                    except json.JSONDecodeError:
                         continue
 
-                    choice_data = chunk.get("choices", [{}])[0]
-                    delta = choice_data.get("delta", {})
-                    content = delta.get("content") or delta.get("reasoning_content", "")
+            except http_requests.RequestException as e:
+                error_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {"content": f"\n\n⚠️ LLM backend error: {str(e)}"}, "finish_reason": None}]
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+        finally:
+            tracker.stop()
+            tracker.sample()
 
-                    out_delta = {}
-                    if content:
-                        out_delta["content"] = content
-                    if delta.get("tool_calls"):
-                        out_delta["tool_calls"] = delta["tool_calls"]
-
-                    out_chunk = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": out_delta,
-                                "finish_reason": choice_data.get("finish_reason"),
-                            }
-                        ]
-                    }
-                    yield f"data: {json.dumps(out_chunk)}\n\n"
-                except json.JSONDecodeError:
-                    continue
-
-        except http_requests.RequestException as e:
-            error_chunk = {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [{"index": 0, "delta": {"content": f"\n\n⚠️ LLM backend error: {str(e)}"}, "finish_reason": None}]
-            }
-            yield f"data: {json.dumps(error_chunk)}\n\n"
-            yield "data: [DONE]\n\n"
-
-        _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, total_prompt, total_completion)
+        reasoning_tokens = reasoning_tokens_from_usage(last_usage, reasoning_text)
+        energy_wh, co2e_g = _energy_from_tracker(
+            tracker, total_prompt, total_completion, reasoning_tokens
+        )
+        _log_usage_and_debit(app, api_key.id, wallet_id, "/v1/chat/completions", model, total_prompt, total_completion, energy_wh=energy_wh, co2e_g=co2e_g)
 
     wallet = db.session.get(Wallet, wallet_id)
     headers = _rate_headers(api_key, wallet)

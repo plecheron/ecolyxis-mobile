@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ecolyxis-v11';
+const CACHE_NAME = 'ecolyxis-v12';
 const STATIC_ASSETS = [
     '/static/css/style.css',
     '/static/css/billing.css',

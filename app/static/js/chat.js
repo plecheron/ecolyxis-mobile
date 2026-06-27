@@ -104,13 +104,23 @@ function applyTokenHighlight(div, totalTokens) {
 }
 
 function highlightExistingMessages() {
+    // Re-render markdown for existing assistant messages (server-side render_message
+    // escapes only; streaming applies renderMd live but page-load doesn't).
+    document.querySelectorAll('.message-assistant .message-text').forEach(function(el) {
+        if (el.querySelector('.generated-image-wrapper')) return;  // skip image messages
+        var raw = el.textContent;
+        if (raw && raw.trim()) {
+            el.innerHTML = renderMd(raw);
+        }
+    });
+    // Token-based highlight
     document.querySelectorAll('.message[data-tokens]').forEach(function(el) {
         var t = parseInt(el.dataset.tokens);
         applyTokenHighlight(el, t);
     });
 }
 
-var MODE_MAX_CTX = {quick: 65536, standard: 65536, long: 200000, vision: 65536, precise: 65536, image: 65536, edit: 65536};
+var MODE_MAX_CTX = {sprint: 200000, standard: 200000, scatterbrain: 200000, image: 65536, edit: 65536};
 
 function getSelectedMode() { return document.getElementById('model-select').value; }
 

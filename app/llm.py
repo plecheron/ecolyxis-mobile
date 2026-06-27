@@ -131,8 +131,7 @@ class LLMClient:
     def stream_chat(self, messages, mode="standard"):
         """Stream chat completion. Yields content strings, then a final usage dict.
         
-        mode: "standard" (64k, 4 parallel), "long" (200k, 1 parallel), "vision" (64k, mmproj),
-              "quick" (64k, 4 parallel, no thinking)
+        mode: "standard" (GLM-4.7-Flash), "sprint" (Qwen3.5-0.8B), "scatterbrain" (Qwen3.6-35B-A3B)
         Sends X-Context-Mode header to trigger the proxy to switch to the right config.
         Thinking tokens (reasoning_content) text is never yielded, but a running
         count is: ``{"thinking_start": True}`` on the first reasoning delta,
@@ -141,7 +140,7 @@ class LLMClient:
         a live "still thinking — N tokens" indicator without exposing the reasoning.
         """
         url = f"{self.base_url}/chat/completions"
-        enable_thinking = mode != "quick"
+        enable_thinking = mode != "sprint"
         payload = {
             "model": self.model,
             "messages": messages,
@@ -152,10 +151,9 @@ class LLMClient:
             "chat_template_kwargs": {"enable_thinking": enable_thinking},
         }
         headers = {}
-        # quick uses standard backend config (same parallel/ctx)
-        proxy_mode = mode if mode not in ("quick", "precise") else "standard"
-        if proxy_mode != "standard":
-            headers["X-Context-Mode"] = proxy_mode
+        # standard is the default backend; sprint and scatterbrain need headers
+        if mode != "standard":
+            headers["X-Context-Mode"] = mode
         thinking_active = False
         reasoning_count = 0
         last_emit_count = 0

@@ -181,14 +181,13 @@
             {% endif %}
             {% set _sel = thread.last_mode or 'standard' %}
             {# media modes are one-shot and never restored as the thread default #}
-            {% if _sel not in ['quick', 'standard', 'long', 'precise', 'vision'] %}{% set _sel = 'standard' %}{% endif %}
+            {% if _sel not in ['sprint', 'standard', 'scatterbrain', 'image', 'edit', 'vision'] %}{% set _sel = 'standard' %}{% endif %}
             {% if _sel == 'vision' and not rate_info.is_premium %}{% set _sel = 'standard' %}{% endif %}
             <select class="model-select" id="model-select">
                 <optgroup label="💬 Chat Modes">
-                    <option value="quick"{{ ' selected' if _sel == 'quick' }}>⚡ Quick — Fast, no thinking</option>
-                    <option value="standard"{{ ' selected' if _sel == 'standard' }}>🌿 Standard — Balanced</option>
-                    <option value="long"{{ ' selected' if _sel == 'long' }}>📖 Long — Extended context</option>
-                    <option value="precise"{{ ' selected' if _sel == 'precise' }}>🎯 Precise — Plan → Draft → Refine</option>
+                    <option value="sprint"{{ ' selected' if _sel == 'sprint' }}>⚡ Sprint — Fast & lightweight (0.8B)</option>
+                    <option value="standard"{{ ' selected' if _sel == 'standard' }}>🌿 Standard — Balanced (GLM-4.7 Flash)</option>
+                    <option value="scatterbrain"{{ ' selected' if _sel == 'scatterbrain' }}>🧠 Scatterbrain — Most capable (35B-A3B)</option>
                 </optgroup>
                 <optgroup label="🎨 Media">
                     <option value="image"{{ ' selected' if _sel == 'image' }}>🖼️ Image Generation</option>
@@ -374,5 +373,5 @@ const sendBtn = document.getElementById("send-btn");
 const isPremium = {{ 'true' if rate_info.is_premium else 'false' }};
 const JOBS_ENABLED = {{ 'true' if jobs_enabled else 'false' }};
 </script>
-<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}?v=2"></script>
 {% endblock %}
