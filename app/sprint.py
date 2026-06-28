@@ -164,7 +164,7 @@ class SprintClient:
         try:
             resp = requests.post(
                 f"{self.manager_url}/switch",
-                json={"variant": self.variant},
+                json={"mode": "llm", "variant": self.variant},
                 timeout=10,
             )
             if resp.status_code != 200:
@@ -191,7 +191,7 @@ class SprintClient:
                     # Wrong variant loaded — retry the switch request (#164)
                     requests.post(
                         f"{self.manager_url}/switch",
-                        json={"variant": self.variant},
+                        json={"mode": "llm", "variant": self.variant},
                         timeout=10,
                     )
             except Exception:
