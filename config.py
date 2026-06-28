@@ -61,11 +61,11 @@ class Config:
     WAN22_URL = os.environ.get("WAN22_URL", "http://10.0.0.6:8085")
     EDIT_URL = os.environ.get("EDIT_URL", "http://10.0.0.6:8087")
 
-    # Sprint model — conductor model (Qwen3.6-35B-A3B)
-    SPRINT_LLM_BASE_URL = os.environ.get("SPRINT_LLM_BASE_URL", "http://192.168.122.5:8081/v1")
-    SPRINT_LLM_MODEL = os.environ.get("SPRINT_LLM_MODEL", "Qwen3.5-0.8B-Q4_K_M.gguf")
+    # Sprint model — fast lightweight model (Qwen3.5-4B)
+    SPRINT_LLM_BASE_URL = os.environ.get("SPRINT_LLM_BASE_URL", "http://10.0.0.6:8081/v1")
+    SPRINT_LLM_MODEL = os.environ.get("SPRINT_LLM_MODEL", "Qwen3.5-4B-Q4_K_M.gguf")
     # Escalation target — the stronger model Sprint consults when unsure
-    SPRINT_ESCALATION_BASE_URL = os.environ.get("SPRINT_ESCALATION_BASE_URL", "http://192.168.122.5:8081/v1")
+    SPRINT_ESCALATION_BASE_URL = os.environ.get("SPRINT_ESCALATION_BASE_URL", "http://10.0.0.6:8081/v1")
     SPRINT_ESCALATION_MODEL = os.environ.get("SPRINT_ESCALATION_MODEL", "GLM-4.7-Flash-Q4_K_M.gguf")
 
     # TTS (Qwen3-TTS via gpu-manager proxy)
