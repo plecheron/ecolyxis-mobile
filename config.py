@@ -63,7 +63,7 @@ class Config:
 
     # Sprint model — conductor model (Qwen3.6-35B-A3B)
     SPRINT_LLM_BASE_URL = os.environ.get("SPRINT_LLM_BASE_URL", "http://192.168.122.5:8081/v1")
-    SPRINT_LLM_MODEL = os.environ.get("SPRINT_LLM_MODEL", "Qwen3.6-35B-A3B-Q4_K_M.gguf")
+    SPRINT_LLM_MODEL = os.environ.get("SPRINT_LLM_MODEL", "Qwen3.5-0.8B-Q4_K_M.gguf")
     # Escalation target — the stronger model Sprint consults when unsure
     SPRINT_ESCALATION_BASE_URL = os.environ.get("SPRINT_ESCALATION_BASE_URL", "http://192.168.122.5:8081/v1")
     SPRINT_ESCALATION_MODEL = os.environ.get("SPRINT_ESCALATION_MODEL", "GLM-4.7-Flash-Q4_K_M.gguf")

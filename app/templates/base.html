@@ -24,19 +24,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script>
     // Theme persistence — must run before body render to prevent FOUC
+    // Always set data-theme explicitly (light or dark) so CSS overrides work
+    // regardless of prefers-color-scheme media query.
     (function() {
         var stored = localStorage.getItem('theme');
         if (!stored) {
             stored = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         }
-        if (stored === 'light') document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.theme = stored;
     })();
     function toggleTheme() {
         var html = document.documentElement;
-        var current = html.dataset.theme === 'light' ? 'light' : 'dark';
+        var current = html.dataset.theme || 'dark';
         var next = current === 'light' ? 'dark' : 'light';
-        if (next === 'dark') delete html.dataset.theme;
-        else html.dataset.theme = 'light';
+        html.dataset.theme = next;
         localStorage.setItem('theme', next);
     }
     </script>
