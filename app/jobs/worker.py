@@ -26,6 +26,8 @@ from app.models import GenerationJob
 from app.redis_client import get_redis
 from app.jobs import (
     PROCESSING_PREFIX,
+    QUEUE_FREE,
+    QUEUE_PREMIUM,
     ack,
     claim,
     enqueue,
@@ -146,6 +148,38 @@ def _heartbeat_loop():
         _shutdown.wait(10)
 
 
+def _recover_orphaned(app):
+    """Re-enqueue DB jobs stuck in 'queued' that are not in any Redis queue.
+
+    When a worker dies mid-process and its Redis processing list expires
+    before the reaper runs, the job stays 'queued' in the DB forever but
+    is absent from all Redis queues. This runs at startup to recover them.
+    """
+    with app.app_context():
+        from sqlalchemy import text
+        stale = (
+            GenerationJob.query
+            .filter(GenerationJob.status == "queued")
+            .all()
+        )
+        if not stale:
+            return
+        r = get_redis()
+        # Snapshot current queue contents
+        in_premium = set(r.lrange(QUEUE_PREMIUM, 0, -1) or [])
+        in_free = set(r.lrange(QUEUE_FREE, 0, -1) or [])
+        recovered = 0
+        for job in stale:
+            jid = job.id
+            if jid in in_premium or jid in in_free:
+                continue  # Still in a queue — worker will pick it up
+            log.warning("recovering orphaned queued job %s (thread=%s)", jid, job.thread_id)
+            enqueue(jid, job.is_premium)
+            recovered += 1
+        if recovered:
+            log.info("recovered %d orphaned queued jobs", recovered)
+
+
 def _requeue_dead(app):
     """Move jobs out of dead workers' processing lists back onto the queue."""
     r = get_redis()
@@ -196,6 +230,9 @@ def main():
 
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
     threading.Thread(target=_reaper_loop, args=(app,), daemon=True).start()
+
+    # Recover orphaned jobs on startup
+    _recover_orphaned(app)
 
     workers = []
     for wid in _thread_wids:
