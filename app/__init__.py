@@ -69,6 +69,7 @@ def create_app(test_config=None):
     from app.health import health_bp
     from app.pricing import pricing_bp
     from app.jobs.routes import jobs_bp
+    from app.sprint_agentic import sprint_agentic_bp
     from app.workspace import workspace_bp
     from app.admin import admin_bp
     from app.sharing import share_bp
@@ -90,6 +91,7 @@ def create_app(test_config=None):
     app.register_blueprint(health_bp)
     app.register_blueprint(pricing_bp)
     app.register_blueprint(jobs_bp)
+    app.register_blueprint(sprint_agentic_bp)
     app.register_blueprint(workspace_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(share_bp)

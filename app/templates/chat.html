@@ -157,7 +157,7 @@
             {% if _sel == 'vision' and not rate_info.is_premium %}{% set _sel = 'standard' %}{% endif %}
             <select class="model-select" id="model-select">
                 <optgroup label="💬 Chat Modes">
-                    <option value="sprint"{{ ' selected' if _sel == 'sprint' }}>⚡ Sprint — Fast & lightweight (0.8B)</option>
+                    <option value="sprint"{{ ' selected' if _sel == 'sprint' }}>⚡ Sprint — Agentic task decomposition (35B)</option>
                     <option value="standard"{{ ' selected' if _sel == 'standard' }}>🌿 Standard — Balanced (GLM-4.7 Flash)</option>
                     <option value="scatterbrain"{{ ' selected' if _sel == 'scatterbrain' }}>🧠 Scatterbrain — Most capable (35B-A3B)</option>
                 </optgroup>
@@ -289,6 +289,31 @@
 #ephemeral-banner .message-content {
     margin: 0;
 }
+
+/* Sprint Agentic Styles */
+.sprint-questions { background: rgba(99,102,241,0.08); border-left: 3px solid #6366f1; padding: 12px 16px; border-radius: 8px; margin: 8px 0; }
+.sprint-questions ol { margin: 8px 0 0 20px; }
+.sprint-questions li { margin: 4px 0; }
+.sprint-answer-hint { margin-top: 8px; opacity: 0.6; }
+.sprint-info { padding: 12px; background: rgba(34,197,94,0.08); border-radius: 8px; border-left: 3px solid #22c55e; }
+.sprint-tasks-section { margin: 16px 0; }
+.sprint-section-title { font-size: 0.95em; opacity: 0.7; margin-bottom: 8px; }
+.sprint-task-card { border: 1px solid var(--border-color, #333); border-radius: 8px; margin: 8px 0; overflow: hidden; background: var(--card-bg, rgba(255,255,255,0.02)); }
+.sprint-task-card.running { border-color: #3b82f6; }
+.sprint-task-card.completed { border-color: #22c55e; }
+.sprint-task-card.failed { border-color: #ef4444; }
+.task-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.03); }
+.task-status-pill { font-size: 0.8em; padding: 2px 8px; border-radius: 12px; background: rgba(255,255,255,0.08); white-space: nowrap; }
+.task-body { padding: 8px 12px; font-size: 0.9em; max-height: 400px; overflow-y: auto; }
+.task-body:empty { display: none; }
+.task-deps { padding: 4px 12px 8px; font-size: 0.8em; opacity: 0.5; }
+.sprint-artifact { border: 2px solid #6366f1; border-radius: 12px; margin: 16px 0; overflow: hidden; }
+.artifact-header { background: #6366f1; color: white; padding: 8px 16px; font-weight: 600; font-size: 0.9em; }
+.artifact-body { padding: 16px; max-height: 600px; overflow-y: auto; }
+.artifact-loading { opacity: 0.5; font-style: italic; }
+.task-retry-btn { margin: 8px 0; padding: 4px 12px; background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+.task-retry-btn:hover { background: rgba(239,68,68,0.25); }
+
 </style>
 
 
