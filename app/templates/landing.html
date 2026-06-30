@@ -317,15 +317,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
 }
-@media (max-width: 768px) {
-    .feature-grid { grid-template-columns: 1fr; }
-    .hero { flex-direction: column; text-align: center; padding: 40px 0 20px; }
-    .hero-content h1 { font-size: 2.2rem; }
-    .hero-content p { margin-left: auto; margin-right: auto; }
-    .hero-cta { justify-content: center; }
-    .hero-graphic { flex: none; }
-    .stats-bar { flex-direction: column; gap: 16px; }
-}
 .feature-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -370,9 +361,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     gap: 20px;
     max-width: 900px;
     margin: 0 auto;
-}
-@media (max-width: 768px) {
-    .pricing-cards { grid-template-columns: 1fr; }
 }
 .pricing-card {
     background: var(--bg-card);
