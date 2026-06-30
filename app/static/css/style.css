@@ -2414,3 +2414,98 @@ details[open] summary { margin-bottom: 8px; }
 /* #141: Hide focusable elements in inert modals */
 [inert] { pointer-events: none; }
 [inert] * { visibility: hidden; }
+
+/* Thread selection / bulk delete (moved from admin.css for dashboard use) */
+.thread-card.selected {
+  border-color: var(--green-hover);
+  box-shadow: 0 0 0 2px rgba(39,174,96,0.3);
+}
+.thread-card .thread-checkbox {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: none;
+  accent-color: var(--green-hover);
+}
+.thread-card.selectable .thread-checkbox {
+  display: block;
+}
+.thread-card.selectable .btn-delete {
+  display: none;
+}
+.thread-select-btn {
+  background: var(--bg-secondary, #16162a);
+  border: 1px solid var(--border, #2a2a3e);
+  color: var(--text, #e8e8f0);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.thread-select-btn:hover {
+  background: var(--border, #2a2a3e);
+}
+.thread-select-btn.active {
+  background: var(--green-hover);
+  border-color: var(--green-hover);
+  color: var(--on-primary);
+}
+.bulk-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary, #16162a);
+  border-top: 1px solid var(--border, #2a2a3e);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 200;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.bulk-action-bar.visible {
+  transform: translateY(0);
+}
+.bulk-action-info {
+  color: var(--text, #e8e8f0);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.bulk-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+.btn-bulk-delete {
+  background: var(--danger);
+  color: var(--on-primary);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-bulk-delete:hover {
+  background: var(--danger-hover);
+}
+.btn-bulk-cancel {
+  background: var(--border, #2a2a3e);
+  color: var(--text, #e8e8f0);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.btn-bulk-cancel:hover {
+  background: var(--text-secondary, #8888aa);
+}
