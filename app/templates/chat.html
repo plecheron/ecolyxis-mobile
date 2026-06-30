@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/sidebar.html" import sidebar %}
 {% block title %}{{ thread.title }} — Ecolyxis{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
@@ -6,101 +7,8 @@
 {% endblock %}
 {% block body %}
 <div class="app-layout">
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <a href="{{ url_for('dashboard.index') }}" class="sidebar-brand">🌿 Ecolyxis</a>
-            {% if rate_info.is_premium %}<span class="tier-badge tier-premium tier-badge-sm" style="margin-left:6px">✨ Premium</span>{% endif %}
-            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
-        </div>
-        {% if current_user.is_premium %}
-        <div class="sidebar-search">
-            <input type="text" id="sidebar-search" placeholder="Search conversations..." autocomplete="off">
-            <div id="sidebar-search-results" class="sidebar-search-results"></div>
-        </div>
-        {% else %}
-        <div class="sidebar-search sidebar-search-locked">
-            <div class="search-locked" onclick="window.location.href='/billing'">
-                <span>🔒</span> Search — <strong>Premium</strong>
-            </div>
-        </div>
-        {% endif %}
-        <div class="sidebar-actions">
-            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
-            </form>
-        </div>
-        <div class="sidebar-workspaces" id="sidebar-workspaces">
-            <div class="sidebar-section-header">
-                <span class="sidebar-section-title">Workspaces</span>
-                <button class="btn-icon" onclick="showCreateWorkspace()" title="New Workspace">+</button>
-            </div>
-            {% for ws in workspaces %}
-            <div class="workspace-group" data-workspace-id="{{ ws.id }}">
-                <div class="workspace-header" onclick="toggleWorkspace('{{ ws.id }}')">
-                    <span class="workspace-collapse-icon" id="ws-icon-{{ ws.id }}">▶</span>
-                    <span class="workspace-name">{{ ws.name }}</span>
-                    <span class="workspace-thread-count">({{ workspace_threads[ws.id]|length }})</span>
-                    <button class="workspace-menu-btn" onclick="event.stopPropagation(); showWorkspaceMenu(event, '{{ ws.id }}')" title="Workspace options">⋮</button>
-                </div>
-                <div class="workspace-threads" id="ws-threads-{{ ws.id }}" style="display:none">
-                    <a href="#" class="thread-item ws-thread quick-chat-item" data-quick-chat="{{ ws.id }}" onclick="event.preventDefault(); openQuickChat('{{ ws.id }}')">
-                        <span class="thread-title" style="font-style:italic;color:var(--text-muted,#8b949e)">⚡ Quick Chat</span>
-                        <span class="thread-date" style="font-size:0.65rem;opacity:0.6">ephemeral</span>
-                    </a>
-                    {% for t in workspace_threads[ws.id] %}
-                    <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item ws-thread {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}" data-workspace-id="{{ ws.id }}">
-                        <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
-                        <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
-                    </a>
-                    {% endfor %}
-                    <form method="POST" action="{{ url_for('dashboard.create_thread') }}" class="ws-new-chat-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="workspace_id" value="{{ ws.id }}">
-                        <button type="submit" class="btn btn-ghost btn-sm btn-full ws-new-chat-btn">+ New Chat</button>
-                    </form>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+    {{ sidebar(threads=threads, workspaces=workspaces, query=query, current_user=current_user, mobile_title=thread.title) }}
 
-        <div class="sidebar-section-header" style="margin-top: 4px; padding: 0 16px;">
-            <span class="sidebar-section-title">Other Chats</span>
-        </div>
-        <nav class="sidebar-threads">
-            {% for t in threads if not t.workspace_id %}
-            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item {{ 'active' if t.id == thread.id }}" data-thread-id="{{ t.id }}">
-                <span class="thread-title" ondblclick="startRenameThread(event, '{{ t.id }}', this)">{{ t.title }}</span>
-                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
-            </a>
-            {% endfor %}
-        </nav>
-        <div style="font-size:0.65rem;color:var(--text-muted,#8b949e);opacity:0.6;padding:0 16px 4px;">© 2026 Ecolyxis</div>
-        <div class="sidebar-footer">
-            <span class="user-name">👤 {{ current_user.display_name }}</span>
-            <div class="sidebar-footer-actions">
-                <a href="/api-keys/" class="sidebar-icon-btn" title="API Keys" aria-label="API Keys">
-                    🔑
-                </a>
-                <a href="{{ url_for('sustainability.dashboard') }}" class="sidebar-icon-btn" title="Sustainability" aria-label="Sustainability">
-                    🌱
-                </a>
-                <a href="/contact/" class="sidebar-icon-btn" title="Contact" aria-label="Contact">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22,6 12,13 2,6"/></svg>
-                </a>
-                <a href="{{ url_for('auth.logout') }}" class="sidebar-icon-btn" title="Log Out">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </a>
-            </div>
-        </div>
-    </aside>
-    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-    <main class="main-content chat-main">
-        <div class="mobile-header">
-            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
-            <span class="mobile-title">{{ thread.title }}</span>
-            <span style="width:40px"></span>
-        </div>
         <div class="chat-header">
             <div class="context-wheel" id="context-wheel" title="Context usage" onclick="toggleCtxMenu(event)">
                 <svg class="context-ring" viewBox="0 0 36 36">

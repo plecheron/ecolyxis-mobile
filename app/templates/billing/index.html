@@ -1,38 +1,13 @@
 {% extends "base.html" %}
+{% from "macros/sidebar.html" import sidebar %}
 {% block extra_css %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/billing.css') }}">
 {% endblock %}
 {% block title %}Billing — Ecolyxis{% endblock %}
 {% block body %}
 <div class="app-layout">
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
-            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
-        </div>
-        <div class="sidebar-actions">
-            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
-            </form>
-        </div>
-        <nav class="sidebar-threads">
-            <a href="{{ url_for('dashboard.index') }}" class="thread-item">
-                <span class="thread-title">← Back to Dashboard</span>
-            </a>
-        </nav>
-        <div class="sidebar-footer">
-            <span class="user-name">👤 {{ current_user.username }}</span>
-            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
-        </div>
-    </aside>
-    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-    <main class="main-content">
-        <div class="mobile-header">
-            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
-            <span class="mobile-title">🌿 Billing</span>
-            <span style="width:40px"></span>
-        </div>
+    {{ sidebar(threads=threads, workspaces=workspaces, query=query, current_user=current_user, mobile_title='🌿 Billing') }}
+
         <div class="billing-page">
             <h1>Billing & Subscription</h1>
 
@@ -120,14 +95,5 @@
         </div>
     </main>
 </div>
-<script>
-function openSidebar() {
-    document.getElementById('sidebar').classList.add('open');
-    document.getElementById('sidebar-overlay').classList.add('active');
-}
-function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebar-overlay').classList.remove('active');
-}
-</script>
+
 {% endblock %}

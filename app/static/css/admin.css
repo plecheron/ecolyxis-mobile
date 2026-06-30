@@ -30,13 +30,6 @@ body.admin-page {
   overflow-y: auto;
 }
 
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 20px 16px 16px;
-  border-bottom: 1px solid var(--border, #2a2a3e);
-}
 
 .sidebar-logo {
   font-size: 1.3rem;
@@ -90,10 +83,6 @@ body.admin-page {
   text-align: center;
 }
 
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border, #2a2a3e);
-}
 
 .sidebar-back {
   color: var(--text-secondary, #8888aa);
@@ -241,31 +230,12 @@ body.admin-page {
 .admin-grid-5 { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 .admin-grid-6 { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 
-/* ── Stat Cards ─────────────────────────────────────────────────── */
-.stat-card {
-  background: var(--bg-card, #1a1a2e);
-  border: 1px solid var(--border, #2a2a3e);
-  border-radius: 12px;
-  padding: 16px;
-  transition: box-shadow 0.2s;
-}
 
 .stat-card:hover {
   box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
 
-.stat-card.highlight {
-  border-left: 3px solid var(--accent, var(--green-hover));
-}
 
-.stat-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary, #8888aa);
-  margin-bottom: 4px;
-  font-weight: 600;
-}
 
 .stat-value {
   font-size: 1.35rem;
@@ -444,10 +414,6 @@ body.admin-page {
   background: rgba(255,255,255,0.02);
 }
 
-.mono {
-  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 0.8rem;
-}
 
 .msg-preview {
   max-width: 360px;
@@ -456,25 +422,8 @@ body.admin-page {
   white-space: nowrap;
 }
 
-/* Tier badges */
-.tier-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
 
-.tier-free {
-  background: rgba(255,255,255,0.06);
-  color: var(--text-secondary, #8888aa);
-}
 
-.tier-premium {
-  background: rgba(39,174,96,0.15);
-  color: var(--green-hover);
-}
 
 /* Role badges */
 .role-user {
@@ -639,68 +588,13 @@ body.admin-page {
   font-size: 0.7rem;
 }
 
-/* Bulk delete action bar */
-.bulk-action-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--bg-secondary, #16162a);
-  border-top: 1px solid var(--border, #2a2a3e);
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  z-index: 200;
-  transform: translateY(100%);
-  transition: transform 0.3s ease;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
-}
-.bulk-action-bar.visible {
-  transform: translateY(0);
-}
-.bulk-action-info {
-  color: var(--text, #e8e8f0);
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-.bulk-action-buttons {
-  display: flex;
-  gap: 8px;
-}
-.btn-bulk-delete {
-  background: var(--danger);
-  color: var(--on-primary);
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
 .btn-bulk-delete:hover {
   background: var(--danger-hover);
-}
-.btn-bulk-cancel {
-  background: var(--border, #2a2a3e);
-  color: var(--text, #e8e8f0);
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
 }
 .btn-bulk-cancel:hover {
   background: var(--text-secondary, #8888aa);
 }
 
-/* Thread card selection state */
-.thread-card.selected {
-  border-color: var(--green-hover);
-  box-shadow: 0 0 0 2px rgba(39,174,96,0.3);
-}
 .thread-card .thread-checkbox {
   position: absolute;
   top: 8px;
@@ -711,29 +605,8 @@ body.admin-page {
   display: none;
   accent-color: var(--green-hover);
 }
-.thread-card.selectable .thread-checkbox {
-  display: block;
-}
-.thread-card.selectable .btn-delete {
-  display: none;
-}
-.thread-select-btn {
-  background: var(--bg-secondary, #16162a);
-  border: 1px solid var(--border, #2a2a3e);
-  color: var(--text, #e8e8f0);
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
 .thread-select-btn:hover {
   background: var(--border, #2a2a3e);
-}
-.thread-select-btn.active {
-  background: var(--green-hover);
-  border-color: var(--green-hover);
-  color: var(--on-primary);
 }
 
 /* Better table scrolling on mobile */

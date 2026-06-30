@@ -2093,15 +2093,6 @@ function deleteCurrentChat() {
 }
 
 
-function openSidebar() {
-    document.getElementById("sidebar").classList.add("open");
-    document.getElementById("sidebar-overlay").classList.add("active");
-}
-function closeSidebar() {
-    document.getElementById("sidebar").classList.remove("open");
-    document.getElementById("sidebar-overlay").classList.remove("active");
-}
-
 // ===== Thread Rename (double-click) =====
 
 // Rename chat title from the conversation view header

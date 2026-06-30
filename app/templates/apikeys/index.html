@@ -1,39 +1,10 @@
 {% extends "base.html" %}
+{% from "macros/sidebar.html" import sidebar %}
 {% block title %}API Keys — Ecolyxis{% endblock %}
 {% block body %}
 <div class="app-layout">
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <a href="/" class="sidebar-brand">🌿 Ecolyxis</a>
-            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
-        </div>
-        <div class="sidebar-actions">
-            <form method="POST" action="{{ url_for('dashboard.create_thread') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary btn-full">+ New Chat</button>
-            </form>
-        </div>
-        <nav class="sidebar-threads">
-            {% for t in threads %}
-            <a href="{{ url_for('chat.view', thread_id=t.id) }}" class="thread-item">
-                <span class="thread-title">{{ t.title }}</span>
-                <span class="thread-date">{{ t.updated_at.strftime('%d %b') }}</span>
-            </a>
-            {% endfor %}
-        </nav>
-        <div class="sidebar-footer">
-            {% if current_user.is_admin %}<a href="/admin/" class="admin-link">⚡ Admin</a>{% endif %}
-            <span class="user-name">👤 {{ current_user.username }}</span>
-            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
-        </div>
-    </aside>
-    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-    <main class="main-content">
-        <div class="mobile-header">
-            <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
-            <span class="mobile-title">🌿 API Keys</span>
-            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Log Out</a>
-        </div>
+    {{ sidebar(threads=threads, workspaces=workspaces, query=query, current_user=current_user, mobile_title='🌿 API Keys') }}
+
         <div class="dashboard-main">
             <div class="dashboard-header">
                 <h2>🔑 API Keys</h2>
@@ -176,14 +147,6 @@ for chunk in response:
     </main>
 </div>
 <script>
-function openSidebar() {
-    document.getElementById('sidebar').classList.add('open');
-    document.getElementById('sidebar-overlay').classList.add('active');
-}
-function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebar-overlay').classList.remove('active');
-}
 function copyKey() {
     const el = document.getElementById('new-key');
     navigator.clipboard.writeText(el.textContent);

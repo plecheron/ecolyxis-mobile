@@ -249,7 +249,5 @@ def _save_remote_image(remote_url):
     return local_name, local_path
 
 from app.chat import routes  # noqa: E402,F401 - register text-chat routes
-# Video routes disabled — Wan2.2 backend is non-functional (#118)
-# from app.chat import video   # noqa: E402,F401 - register video routes
 from app.chat import export   # noqa: E402,F401 - register export routes
 from app.chat import tts      # noqa: E402,F401 - register TTS routes

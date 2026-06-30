@@ -12,3 +12,6 @@ config.real.py
 config.py.real
 .coverage
 .venv/
+.env.bak.*
+uploads.bak.*/
+debug_route.py
