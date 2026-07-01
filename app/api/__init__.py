@@ -21,7 +21,6 @@ PRICE_PER_MTOK = 278  # pence per million tokens (£2.78)
 
 # --- Model aliases -> proxy modes ---
 MODEL_ALIASES = {
-    "ecolyxis-sprint": "sprint",
     "ecolyxis-standard": "standard",
     "ecolyxis-scatterbrain": "scatterbrain",
 }

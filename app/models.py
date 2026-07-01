@@ -360,40 +360,6 @@ class GeneratedImage(db.Model):
 
 
 
-class SprintSession(db.Model):
-    """Agentic Sprint session — question loop + task decomposition + artifact."""
-    __tablename__ = "sprint_session"
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    thread_id = db.Column(db.String(36), db.ForeignKey("thread.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    state = db.Column(db.String(20), default="questioning", nullable=False)
-    original_prompt = db.Column(db.Text, nullable=False)
-    refined_prompt = db.Column(db.Text)
-    qa_history = db.Column(db.Text, default="[]")
-    artifact_markdown = db.Column(db.Text)
-    error = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    tasks = db.relationship("SprintTask", backref="session", lazy=True, cascade="all, delete-orphan")
-
-
-class SprintTask(db.Model):
-    """A single decomposed task within a Sprint session."""
-    __tablename__ = "sprint_task"
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = db.Column(db.String(36), db.ForeignKey("sprint_session.id"), nullable=False, index=True)
-    order = db.Column(db.Integer, nullable=False)
-    title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=False)
-    depends_on = db.Column(db.Text, default="[]")
-    status = db.Column(db.String(20), default="pending", nullable=False)
-    result = db.Column(db.Text)
-    error = db.Column(db.Text)
-    job_id = db.Column(db.String(36), nullable=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    started_at = db.Column(db.DateTime, nullable=True)
-    completed_at = db.Column(db.DateTime, nullable=True)
 
 
 class GeneratedVideo(db.Model):

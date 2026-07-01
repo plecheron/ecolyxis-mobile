@@ -5,13 +5,6 @@ models_selector_bp = Blueprint("models_selector", __name__)
 
 AVAILABLE_MODELS = [
     {
-        "id": "ecolyxis-sprint",
-        "name": "Sprint",
-        "description": "Ultra-fast responses for simple questions (Qwen3.5-0.8B)",
-        "context_window": 200000,
-        "tier": "free",
-    },
-    {
         "id": "ecolyxis-standard",
         "name": "Standard",
         "description": "Balanced quality and speed (GLM-4.7 Flash)",
