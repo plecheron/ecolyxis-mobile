@@ -78,26 +78,11 @@
     --on-primary: #ffffff;
 }
 
-/* Theme toggle button */
-.theme-toggle {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 6px 10px;
-    cursor: pointer;
-    font-size: 1.1rem;
-    color: var(--text);
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-.theme-toggle:hover { border-color: var(--text-muted); }
+/* Theme toggle button (in sidebar footer) */
+/* Theme toggle button (in sidebar footer) */
 .theme-toggle .theme-icon-dark { display: none; }
 :root[data-theme="light"] .theme-toggle .theme-icon-dark { display: inline; }
 :root[data-theme="light"] .theme-toggle .theme-icon-light { display: none; }
-
-/* ===== Reset & Base ===== */
 *, *::before, *::after {
     margin: 0;
     padding: 0;

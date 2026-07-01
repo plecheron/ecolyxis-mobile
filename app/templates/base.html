@@ -93,12 +93,7 @@
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
     {% block scripts %}{% endblock %}
 
-    <!-- Theme toggle (#dark-mode) -->
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme"
-            style="position:fixed;bottom:20px;right:20px;z-index:9998;width:40px;height:40px;padding:0;justify-content:center;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-        <span class="theme-icon-light">🌙</span>
-        <span class="theme-icon-dark">☀️</span>
-    </button>
+    <!-- Theme toggle moved to sidebar footer -->
 
     <!-- Toast notification system (#154) -->
     <div class="toast-container" id="toast-container"></div>
