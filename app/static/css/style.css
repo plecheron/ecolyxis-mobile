@@ -2299,7 +2299,6 @@ body:has(.sidebar.open) {
 .modal-overlay[style*="display:none"] { visibility: hidden; pointer-events: none; }
 .mobile-menu-btn { tabindex: -1; }
 .skip-link:focus { outline: 2px solid var(--primary,#2ea44f); }
-.suggestion-chip { cursor: pointer; }
 details summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
 details[open] summary { margin-bottom: 8px; }
 
